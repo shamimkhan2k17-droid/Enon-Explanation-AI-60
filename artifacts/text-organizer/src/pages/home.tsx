@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, Copy, Check, ArrowLeft, Loader2, FileText,
-  Trash2, RefreshCcw, BookOpen, AlertCircle, ChevronDown, ChevronUp
+  Trash2, RefreshCcw, BookOpen, AlertCircle, ChevronDown, ChevronUp,
+  ChevronsDown
 } from "lucide-react";
 import { useOrganizeText } from "@workspace/api-client-react";
 import { CustomButton } from "@/components/ui/custom-button";
@@ -106,6 +107,8 @@ export default function Home() {
   } = useOrganizeText();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mcqRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const autoScrollActive = useRef(false);
 
   useEffect(() => {
     if (!organizeData && !isOrganizing && textareaRef.current) {
@@ -129,6 +132,27 @@ export default function Home() {
       );
     }
   }, [organizeData]);
+
+  // ── auto-scroll to first loading MCQ ─────────────────────────────────────
+  useEffect(() => {
+    if (!autoScrollActive.current) return;
+    for (let si = 0; si < sectionStates.length; si++) {
+      for (let mi = 0; mi < sectionStates[si].mcqs.length; mi++) {
+        if (sectionStates[si].mcqs[mi].state === "loading") {
+          const el = mcqRefs.current[`${si}-${mi}`];
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+          }
+        }
+      }
+    }
+    // All done — stop auto-scroll
+    const anyPending = sectionStates.some((s) =>
+      s.mcqs.some((m) => m.state === "idle" || m.state === "loading")
+    );
+    if (!anyPending) autoScrollActive.current = false;
+  }, [sectionStates]);
 
   // ── explain a single MCQ ──────────────────────────────────────────────────
   const explainMCQ = useCallback(
@@ -264,6 +288,12 @@ export default function Home() {
       if (hasPending) await explainSection(si);
     }
   }, [sectionStates, explainSection]);
+
+  // ── auto-scroll + explain all ─────────────────────────────────────────────
+  const explainAllWithScroll = useCallback(() => {
+    autoScrollActive.current = true;
+    explainAll();
+  }, [explainAll]);
 
   // ── copy all ──────────────────────────────────────────────────────────────
   const handleCopyAll = async () => {

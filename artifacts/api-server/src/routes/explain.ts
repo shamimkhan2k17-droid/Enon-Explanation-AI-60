@@ -26,6 +26,7 @@ STRICT RULES:
 - Write all explanations in Bengali (বাংলা)
 - Do NOT use any bold, italic, or markdown formatting — no **, no *, no __, no ##
 - Do NOT add asterisks or any special symbols other than ✒️
+- Do NOT include Bengali option markers (ক, খ, গ, ঘ) or any option labels inside the explanation text — refer to options by their actual content or meaning, never by their letter marker
 - Keep language plain, clear, and readable
 - Wrong option explanations are optional — only add them when they genuinely help
 - Additional notes are optional — only add when there is truly valuable context
