@@ -3,6 +3,7 @@
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+This project is an **Intelligent Text Organizer** — a React + Vite web app that uses AI (OpenAI via Replit AI Integrations) to organize and explain text by topic. It specifically supports Bengali MCQ text for competitive exam preparation (BCS, etc.).
 
 ## Stack
 
@@ -15,6 +16,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **AI**: OpenAI via Replit AI Integrations (`@workspace/integrations-openai-ai-server`)
 
 ## Structure
 

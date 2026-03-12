@@ -5,18 +5,28 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  ExplainMcqRequest,
+  ExplainMcqResponse,
+  HealthStatus,
+  OrganizeTextRequest,
+  OrganizeTextResponse,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +109,177 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Takes a long text and reorganizes it under topic headings without changing any content
+ * @summary Analyze and organize text by topics
+ */
+export const getOrganizeTextUrl = () => {
+  return `/api/text/organize`;
+};
+
+export const organizeText = async (
+  organizeTextRequest: OrganizeTextRequest,
+  options?: RequestInit,
+): Promise<OrganizeTextResponse> => {
+  return customFetch<OrganizeTextResponse>(getOrganizeTextUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(organizeTextRequest),
+  });
+};
+
+export const getOrganizeTextMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof organizeText>>,
+    TError,
+    { data: BodyType<OrganizeTextRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof organizeText>>,
+  TError,
+  { data: BodyType<OrganizeTextRequest> },
+  TContext
+> => {
+  const mutationKey = ["organizeText"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof organizeText>>,
+    { data: BodyType<OrganizeTextRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return organizeText(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type OrganizeTextMutationResult = NonNullable<
+  Awaited<ReturnType<typeof organizeText>>
+>;
+export type OrganizeTextMutationBody = BodyType<OrganizeTextRequest>;
+export type OrganizeTextMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Analyze and organize text by topics
+ */
+export const useOrganizeText = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof organizeText>>,
+    TError,
+    { data: BodyType<OrganizeTextRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof organizeText>>,
+  TError,
+  { data: BodyType<OrganizeTextRequest> },
+  TContext
+> => {
+  return useMutation(getOrganizeTextMutationOptions(options));
+};
+
+/**
+ * Takes organized sections containing MCQs and returns AI-generated explanations for each MCQ
+ * @summary Generate MCQ explanations for organized sections
+ */
+export const getExplainMcqUrl = () => {
+  return `/api/text/explain`;
+};
+
+export const explainMcq = async (
+  explainMcqRequest: ExplainMcqRequest,
+  options?: RequestInit,
+): Promise<ExplainMcqResponse> => {
+  return customFetch<ExplainMcqResponse>(getExplainMcqUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(explainMcqRequest),
+  });
+};
+
+export const getExplainMcqMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof explainMcq>>,
+    TError,
+    { data: BodyType<ExplainMcqRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof explainMcq>>,
+  TError,
+  { data: BodyType<ExplainMcqRequest> },
+  TContext
+> => {
+  const mutationKey = ["explainMcq"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof explainMcq>>,
+    { data: BodyType<ExplainMcqRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return explainMcq(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ExplainMcqMutationResult = NonNullable<
+  Awaited<ReturnType<typeof explainMcq>>
+>;
+export type ExplainMcqMutationBody = BodyType<ExplainMcqRequest>;
+export type ExplainMcqMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate MCQ explanations for organized sections
+ */
+export const useExplainMcq = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof explainMcq>>,
+    TError,
+    { data: BodyType<ExplainMcqRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof explainMcq>>,
+  TError,
+  { data: BodyType<ExplainMcqRequest> },
+  TContext
+> => {
+  return useMutation(getExplainMcqMutationOptions(options));
+};

@@ -6,4 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./errorResponse";
+export * from "./explainMcqRequest";
+export * from "./explainMcqResponse";
 export * from "./healthStatus";
+export * from "./organizeTextRequest";
+export * from "./organizeTextResponse";
+export * from "./topicSection";
+export * from "./topicSectionWithExplanation";

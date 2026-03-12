@@ -8,3 +8,43 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface OrganizeTextRequest {
+  /** The long text to be analyzed and reorganized by topic */
+  text: string;
+}
+
+export interface TopicSection {
+  /** The topic title */
+  title: string;
+  /** The text content belonging to this topic */
+  content: string;
+}
+
+export interface TopicSectionWithExplanation {
+  /** The topic title */
+  title: string;
+  /** The text content belonging to this topic */
+  content: string;
+  /** AI-generated explanation for the MCQ(s) in this section */
+  explanation: string;
+}
+
+export interface OrganizeTextResponse {
+  /** Text reorganized into topic sections */
+  sections: TopicSection[];
+}
+
+export interface ExplainMcqRequest {
+  /** The organized sections containing MCQs to explain */
+  sections: TopicSection[];
+}
+
+export interface ExplainMcqResponse {
+  /** Sections with explanations added */
+  sections: TopicSectionWithExplanation[];
+}
+
+export interface ErrorResponse {
+  error: string;
+}

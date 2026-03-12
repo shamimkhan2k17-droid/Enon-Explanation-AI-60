@@ -14,3 +14,59 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Takes a long text and reorganizes it under topic headings without changing any content
+ * @summary Analyze and organize text by topics
+ */
+export const OrganizeTextBody = zod.object({
+  text: zod
+    .string()
+    .describe("The long text to be analyzed and reorganized by topic"),
+});
+
+export const OrganizeTextResponse = zod.object({
+  sections: zod
+    .array(
+      zod.object({
+        title: zod.string().describe("The topic title"),
+        content: zod
+          .string()
+          .describe("The text content belonging to this topic"),
+      }),
+    )
+    .describe("Text reorganized into topic sections"),
+});
+
+/**
+ * Takes organized sections containing MCQs and returns AI-generated explanations for each MCQ
+ * @summary Generate MCQ explanations for organized sections
+ */
+export const ExplainMcqBody = zod.object({
+  sections: zod
+    .array(
+      zod.object({
+        title: zod.string().describe("The topic title"),
+        content: zod
+          .string()
+          .describe("The text content belonging to this topic"),
+      }),
+    )
+    .describe("The organized sections containing MCQs to explain"),
+});
+
+export const ExplainMcqResponse = zod.object({
+  sections: zod
+    .array(
+      zod.object({
+        title: zod.string().describe("The topic title"),
+        content: zod
+          .string()
+          .describe("The text content belonging to this topic"),
+        explanation: zod
+          .string()
+          .describe("AI-generated explanation for the MCQ(s) in this section"),
+      }),
+    )
+    .describe("Sections with explanations added"),
+});

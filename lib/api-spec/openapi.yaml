@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -10,6 +9,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: text
+    description: Text analysis and organization operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /text/organize:
+    post:
+      operationId: organizeText
+      tags: [text]
+      summary: Analyze and organize text by topics
+      description: Takes a long text and reorganizes it under topic headings without changing any content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeTextRequest"
+      responses:
+        "200":
+          description: Organized text with topic sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeTextResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /text/explain:
+    post:
+      operationId: explainMcq
+      tags: [text]
+      summary: Generate MCQ explanations for organized sections
+      description: Takes organized sections containing MCQs and returns AI-generated explanations for each MCQ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExplainMcqRequest"
+      responses:
+        "200":
+          description: Sections with explanations added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplainMcqResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +96,76 @@ components:
           type: string
       required:
         - status
-
+    OrganizeTextRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The long text to be analyzed and reorganized by topic
+      required:
+        - text
+    TopicSection:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The topic title
+        content:
+          type: string
+          description: The text content belonging to this topic
+      required:
+        - title
+        - content
+    TopicSectionWithExplanation:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The topic title
+        content:
+          type: string
+          description: The text content belonging to this topic
+        explanation:
+          type: string
+          description: AI-generated explanation for the MCQ(s) in this section
+      required:
+        - title
+        - content
+        - explanation
+    OrganizeTextResponse:
+      type: object
+      properties:
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicSection"
+          description: Text reorganized into topic sections
+      required:
+        - sections
+    ExplainMcqRequest:
+      type: object
+      properties:
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicSection"
+          description: The organized sections containing MCQs to explain
+      required:
+        - sections
+    ExplainMcqResponse:
+      type: object
+      properties:
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicSectionWithExplanation"
+          description: Sections with explanations added
+      required:
+        - sections
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
