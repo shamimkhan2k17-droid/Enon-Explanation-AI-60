@@ -8,39 +8,53 @@ import { useOrganizeText } from "@workspace/api-client-react";
 import { CustomButton } from "@/components/ui/custom-button";
 
 type Section = { title: string; content: string };
-
 type ExplainState = "idle" | "loading" | "done" | "error";
+
+interface MCQState {
+  content: string;
+  explanation: string | null;
+  state: ExplainState;
+  error: string | null;
+}
 
 interface SectionState {
   section: Section;
-  explanation: string | null;
-  explainState: ExplainState;
-  errorMsg: string | null;
+  mcqs: MCQState[];
+  collapsed: boolean;
 }
 
-function ExplainedContent({ text }: { text: string }) {
-  return (
-    <div className="text-sm leading-relaxed space-y-0.5">
-      {text.split("\n").map((line, i) => {
-        const isExplanation = line.trimStart().startsWith("✒️");
-        return (
-          <div
-            key={i}
-            className={
-              isExplanation
-                ? "text-amber-800 bg-amber-50 rounded px-2 py-0.5 border-l-2 border-amber-300 my-1"
-                : "text-foreground"
-            }
-          >
-            {line || "\u00A0"}
-          </div>
-        );
-      })}
-    </div>
-  );
+// ── MCQ parser ────────────────────────────────────────────────────────────────
+// Splits section content into individual MCQ blocks.
+// A new MCQ starts when a line begins with a Bengali or Arabic numeral followed by . ) or ।
+function parseMCQs(content: string): string[] {
+  const lines = content.split("\n");
+  const blocks: string[] = [];
+  let current: string[] = [];
+
+  const startsNewMCQ = (line: string): boolean =>
+    /^[\s]*[০-৯0-9]{1,3}[.)।]/.test(line.trim()) && line.trim().length > 3;
+
+  for (const line of lines) {
+    if (startsNewMCQ(line) && current.some((l) => l.trim())) {
+      blocks.push(current.join("\n").trim());
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.some((l) => l.trim())) {
+    blocks.push(current.join("\n").trim());
+  }
+
+  const result = blocks.filter((b) => b.trim());
+  // If only one block (couldn't split), return as-is
+  return result.length > 0 ? result : [content.trim()];
 }
 
-async function fetchExplanation(sections: Section[]): Promise<{ title: string; content: string; explanation: string }[]> {
+// ── API helper ────────────────────────────────────────────────────────────────
+async function fetchExplanations(
+  sections: { title: string; content: string }[]
+): Promise<{ explanation: string }[]> {
   const res = await fetch("/api/text/explain", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -54,13 +68,42 @@ async function fetchExplanation(sections: Section[]): Promise<{ title: string; c
   return data.sections;
 }
 
+// ── Explained content renderer ────────────────────────────────────────────────
+function ExplainedContent({ text }: { text: string }) {
+  return (
+    <div className="text-sm leading-relaxed space-y-0.5">
+      {text.split("\n").map((line, i) => {
+        const isExp = line.trimStart().startsWith("✒️");
+        return (
+          <div
+            key={i}
+            className={
+              isExp
+                ? "text-amber-800 bg-amber-50 rounded px-2 py-0.5 border-l-2 border-amber-300 my-1"
+                : "text-foreground"
+            }
+          >
+            {line || "\u00A0"}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function Home() {
   const [text, setText] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [sectionStates, setSectionStates] = useState<SectionState[]>([]);
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
 
-  const { mutate: organize, isPending: isOrganizing, data: organizeData, reset: resetOrganize, error: organizeError } = useOrganizeText();
+  const {
+    mutate: organize,
+    isPending: isOrganizing,
+    data: organizeData,
+    reset: resetOrganize,
+    error: organizeError,
+  } = useOrganizeText();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -75,104 +118,170 @@ export default function Home() {
       setSectionStates(
         organizeData.sections.map((s) => ({
           section: s,
-          explanation: null,
-          explainState: "idle",
-          errorMsg: null,
+          mcqs: parseMCQs(s.content).map((mcqContent) => ({
+            content: mcqContent,
+            explanation: null,
+            state: "idle" as ExplainState,
+            error: null,
+          })),
+          collapsed: false,
         }))
       );
-      // Expand all by default
-      setExpandedSections(new Set(organizeData.sections.map((_, i) => i)));
     }
   }, [organizeData]);
 
-  const handleAnalyze = () => {
-    if (!text.trim()) return;
-    organize({ data: { text } });
-  };
+  // ── explain a single MCQ ──────────────────────────────────────────────────
+  const explainMCQ = useCallback(
+    async (sectionIdx: number, mcqIdx: number) => {
+      const section = sectionStates[sectionIdx];
+      const mcq = section.mcqs[mcqIdx];
 
-  const explainSingleSection = useCallback(async (index: number) => {
-    setSectionStates((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], explainState: "loading", errorMsg: null };
-      return next;
-    });
-    try {
-      const results = await fetchExplanation([sectionStates[index].section]);
-      const explanation = results[0]?.explanation ?? sectionStates[index].section.content;
       setSectionStates((prev) => {
-        const next = [...prev];
-        next[index] = { ...next[index], explanation, explainState: "done", errorMsg: null };
+        const next = prev.map((s, si) =>
+          si !== sectionIdx
+            ? s
+            : {
+                ...s,
+                mcqs: s.mcqs.map((m, mi) =>
+                  mi !== mcqIdx ? m : { ...m, state: "loading" as ExplainState, error: null }
+                ),
+              }
+        );
         return next;
       });
-    } catch (e: any) {
-      setSectionStates((prev) => {
-        const next = [...prev];
-        next[index] = { ...next[index], explainState: "error", errorMsg: e.message };
-        return next;
-      });
-    }
-  }, [sectionStates]);
-
-  const explainAllSections = useCallback(async () => {
-    const pendingIndices = sectionStates
-      .map((s, i) => (s.explainState !== "done" ? i : null))
-      .filter((i): i is number => i !== null);
-
-    if (pendingIndices.length === 0) return;
-
-    // Mark all pending as loading
-    setSectionStates((prev) => {
-      const next = [...prev];
-      pendingIndices.forEach((i) => {
-        next[i] = { ...next[i], explainState: "loading", errorMsg: null };
-      });
-      return next;
-    });
-
-    // Process in batches of 3 for better UX (show results as they come in)
-    const BATCH = 3;
-    for (let b = 0; b < pendingIndices.length; b += BATCH) {
-      const batch = pendingIndices.slice(b, b + BATCH);
-      const sections = batch.map((i) => sectionStates[i].section);
 
       try {
-        const results = await fetchExplanation(sections);
-        setSectionStates((prev) => {
-          const next = [...prev];
-          batch.forEach((sectionIndex, batchIdx) => {
-            const explanation = results[batchIdx]?.explanation ?? sectionStates[sectionIndex].section.content;
-            next[sectionIndex] = { ...next[sectionIndex], explanation, explainState: "done", errorMsg: null };
-          });
-          return next;
-        });
+        const results = await fetchExplanations([
+          { title: section.section.title, content: mcq.content },
+        ]);
+        const explanation = results[0]?.explanation ?? mcq.content;
+        setSectionStates((prev) =>
+          prev.map((s, si) =>
+            si !== sectionIdx
+              ? s
+              : {
+                  ...s,
+                  mcqs: s.mcqs.map((m, mi) =>
+                    mi !== mcqIdx
+                      ? m
+                      : { ...m, explanation, state: "done" as ExplainState, error: null }
+                  ),
+                }
+          )
+        );
       } catch (e: any) {
-        setSectionStates((prev) => {
-          const next = [...prev];
-          batch.forEach((sectionIndex) => {
-            if (next[sectionIndex].explainState === "loading") {
-              next[sectionIndex] = { ...next[sectionIndex], explainState: "error", errorMsg: e.message };
-            }
-          });
-          return next;
-        });
+        setSectionStates((prev) =>
+          prev.map((s, si) =>
+            si !== sectionIdx
+              ? s
+              : {
+                  ...s,
+                  mcqs: s.mcqs.map((m, mi) =>
+                    mi !== mcqIdx
+                      ? m
+                      : { ...m, state: "error" as ExplainState, error: e.message }
+                  ),
+                }
+          )
+        );
       }
-    }
-  }, [sectionStates]);
+    },
+    [sectionStates]
+  );
 
+  // ── explain all pending MCQs in a section ──────────────────────────────────
+  const explainSection = useCallback(
+    async (sectionIdx: number) => {
+      const section = sectionStates[sectionIdx];
+      const pending = section.mcqs
+        .map((m, i) => ({ m, i }))
+        .filter(({ m }) => m.state !== "done");
+
+      if (!pending.length) return;
+
+      // Mark all pending as loading
+      setSectionStates((prev) =>
+        prev.map((s, si) =>
+          si !== sectionIdx
+            ? s
+            : {
+                ...s,
+                mcqs: s.mcqs.map((m, mi) =>
+                  pending.some(({ i }) => i === mi)
+                    ? { ...m, state: "loading" as ExplainState, error: null }
+                    : m
+                ),
+              }
+        )
+      );
+
+      // Process in batches of 3
+      const BATCH = 3;
+      for (let b = 0; b < pending.length; b += BATCH) {
+        const batch = pending.slice(b, b + BATCH);
+        try {
+          const results = await fetchExplanations(
+            batch.map(({ m }) => ({
+              title: section.section.title,
+              content: m.content,
+            }))
+          );
+          setSectionStates((prev) =>
+            prev.map((s, si) => {
+              if (si !== sectionIdx) return s;
+              const newMCQs = [...s.mcqs];
+              batch.forEach(({ i }, bi) => {
+                const explanation = results[bi]?.explanation ?? s.mcqs[i].content;
+                newMCQs[i] = { ...newMCQs[i], explanation, state: "done", error: null };
+              });
+              return { ...s, mcqs: newMCQs };
+            })
+          );
+        } catch (e: any) {
+          setSectionStates((prev) =>
+            prev.map((s, si) => {
+              if (si !== sectionIdx) return s;
+              const newMCQs = [...s.mcqs];
+              batch.forEach(({ i }) => {
+                if (newMCQs[i].state === "loading") {
+                  newMCQs[i] = { ...newMCQs[i], state: "error", error: e.message };
+                }
+              });
+              return { ...s, mcqs: newMCQs };
+            })
+          );
+        }
+      }
+    },
+    [sectionStates]
+  );
+
+  // ── explain ALL pending MCQs across all sections ───────────────────────────
+  const explainAll = useCallback(async () => {
+    for (let si = 0; si < sectionStates.length; si++) {
+      const section = sectionStates[si];
+      const hasPending = section.mcqs.some((m) => m.state !== "done");
+      if (hasPending) await explainSection(si);
+    }
+  }, [sectionStates, explainSection]);
+
+  // ── copy all ──────────────────────────────────────────────────────────────
   const handleCopyAll = async () => {
     if (!sectionStates.length) return;
-    const formattedText = sectionStates
+    const out = sectionStates
       .map((s) => {
-        const body = s.explanation ?? s.section.content;
+        const body = s.mcqs
+          .map((m) => m.explanation ?? m.content)
+          .join("\n\n");
         return `${s.section.title}\n\n${body}`;
       })
       .join("\n\n---\n\n");
     try {
-      await navigator.clipboard.writeText(formattedText);
+      await navigator.clipboard.writeText(out);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      console.error(err);
     }
   };
 
@@ -188,20 +297,27 @@ export default function Home() {
     setSectionStates([]);
   };
 
-  const toggleExpand = (index: number) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
+  const toggleCollapse = (si: number) => {
+    setSectionStates((prev) =>
+      prev.map((s, i) => (i === si ? { ...s, collapsed: !s.collapsed } : s))
+    );
   };
 
-  const doneCount = sectionStates.filter((s) => s.explainState === "done").length;
-  const loadingCount = sectionStates.filter((s) => s.explainState === "loading").length;
-  const errorCount = sectionStates.filter((s) => s.explainState === "error").length;
-  const pendingCount = sectionStates.filter((s) => s.explainState === "idle" || s.explainState === "error").length;
-  const allDone = sectionStates.length > 0 && doneCount === sectionStates.length;
+  // ── derived counts ─────────────────────────────────────────────────────────
+  const totalMCQs = sectionStates.reduce((n, s) => n + s.mcqs.length, 0);
+  const doneMCQs = sectionStates.reduce(
+    (n, s) => n + s.mcqs.filter((m) => m.state === "done").length,
+    0
+  );
+  const loadingMCQs = sectionStates.reduce(
+    (n, s) => n + s.mcqs.filter((m) => m.state === "loading").length,
+    0
+  );
+  const errorMCQs = sectionStates.reduce(
+    (n, s) => n + s.mcqs.filter((m) => m.state === "error").length,
+    0
+  );
+  const allDone = totalMCQs > 0 && doneMCQs === totalMCQs;
 
   return (
     <div className="min-h-screen pb-24 pt-12 px-4 sm:px-6 lg:px-8 selection:bg-primary/10">
@@ -216,13 +332,13 @@ export default function Home() {
             Intelligent Text Organizer
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Paste your notes, MCQs, or any text. We'll organize it by topic — then explain every MCQ with ✒️ detail.
+            Paste your MCQs or notes. We'll organize by topic — then explain every MCQ with ✒️ detail.
           </p>
         </header>
 
         <AnimatePresence mode="wait">
 
-          {/* STATE 1: INPUT */}
+          {/* ── STATE 1: INPUT ── */}
           {!organizeData && !isOrganizing && (
             <motion.div
               key="input-view"
@@ -233,7 +349,7 @@ export default function Home() {
               className="space-y-4"
             >
               <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-border/50 to-border/10 rounded-3xl blur-sm opacity-50 group-hover:opacity-100 transition duration-500"></div>
+                <div className="absolute -inset-1 bg-gradient-to-r from-border/50 to-border/10 rounded-3xl blur-sm opacity-50 group-hover:opacity-100 transition duration-500" />
                 <div className="relative bg-card rounded-2xl border border-border shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 transition-all duration-300">
                   <div className="bg-muted/30 border-b border-border px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
@@ -271,8 +387,8 @@ export default function Home() {
                 )}
                 <CustomButton
                   size="lg"
-                  onClick={handleAnalyze}
-                  disabled={!text.trim() || isOrganizing}
+                  onClick={() => { if (text.trim()) organize({ data: { text } }); }}
+                  disabled={!text.trim()}
                   className="w-full sm:w-auto"
                 >
                   <Sparkles className="w-5 h-5 mr-2" />
@@ -282,7 +398,7 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* STATE 2: LOADING (organize) */}
+          {/* ── STATE 2: LOADING ── */}
           {isOrganizing && (
             <motion.div
               key="loading-view"
@@ -292,56 +408,55 @@ export default function Home() {
               className="py-24 flex flex-col items-center justify-center space-y-6"
             >
               <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full"></div>
+                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
                 <Loader2 className="w-12 h-12 text-primary animate-spin relative z-10" />
               </div>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-bold text-foreground">Analyzing your text...</h3>
-                <p className="text-muted-foreground">Identifying topics and categorizing content without losing a single word.</p>
+                <p className="text-muted-foreground">Identifying topics and categorizing content.</p>
               </div>
               <div className="w-full max-w-2xl mt-12 space-y-6 opacity-40">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="space-y-3">
-                    <div className="h-6 bg-border/50 rounded-md w-1/3 animate-pulse"></div>
-                    <div className="h-4 bg-border/30 rounded-md w-full animate-pulse"></div>
-                    <div className="h-4 bg-border/30 rounded-md w-5/6 animate-pulse"></div>
+                    <div className="h-6 bg-border/50 rounded-md w-1/3 animate-pulse" />
+                    <div className="h-4 bg-border/30 rounded-md w-full animate-pulse" />
+                    <div className="h-4 bg-border/30 rounded-md w-5/6 animate-pulse" />
                   </div>
                 ))}
               </div>
             </motion.div>
           )}
 
-          {/* STATE 3: RESULTS */}
+          {/* ── STATE 3: RESULTS ── */}
           {organizeData && !isOrganizing && (
             <motion.div
               key="results-view"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
-              className="space-y-8"
+              className="space-y-6"
             >
-              {/* Toolbar */}
+              {/* Global toolbar */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card p-4 rounded-2xl border border-border shadow-sm">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${allDone ? "bg-amber-500" : "bg-green-500"}`}></div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${allDone ? "bg-amber-500" : "bg-green-500"}`} />
                   <span className="text-sm font-medium text-foreground">
-                    {sectionStates.length} topic{sectionStates.length !== 1 ? "s" : ""}
+                    {sectionStates.length} topic{sectionStates.length !== 1 ? "s" : ""} · {totalMCQs} MCQ{totalMCQs !== 1 ? "s" : ""}
                   </span>
-                  {doneCount > 0 && (
+                  {doneMCQs > 0 && (
                     <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
-                      ✒️ {doneCount}/{sectionStates.length} explained
+                      ✒️ {doneMCQs}/{totalMCQs} explained
                     </span>
                   )}
-                  {loadingCount > 0 && (
+                  {loadingMCQs > 0 && (
                     <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      {loadingCount} loading...
+                      {loadingMCQs} loading
                     </span>
                   )}
-                  {errorCount > 0 && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errorCount} failed
+                  {errorMCQs > 0 && (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                      {errorMCQs} failed
                     </span>
                   )}
                 </div>
@@ -355,203 +470,217 @@ export default function Home() {
                     <RefreshCcw className="w-4 h-4 mr-2" />
                     Start Over
                   </CustomButton>
-
                   {!allDone && (
                     <CustomButton
                       variant="secondary"
                       size="sm"
-                      onClick={explainAllSections}
-                      disabled={loadingCount > 0}
-                      className="min-w-[180px]"
+                      onClick={explainAll}
+                      disabled={loadingMCQs > 0}
+                      className="min-w-[190px]"
                     >
-                      {loadingCount > 0 ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Generating ({doneCount}/{sectionStates.length})...
-                        </>
+                      {loadingMCQs > 0 ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Explaining ({doneMCQs}/{totalMCQs})...</>
                       ) : (
-                        <>
-                          <BookOpen className="w-4 h-4 mr-2" />
-                          {errorCount > 0 ? "Retry Failed + Explain Rest" : "Explain All / সব ব্যাখ্যা"}
-                        </>
+                        <><BookOpen className="w-4 h-4 mr-2" />{errorMCQs > 0 ? "Retry Failed + Explain Rest" : "Explain All MCQs"}</>
                       )}
                     </CustomButton>
                   )}
-
                   <CustomButton size="sm" onClick={handleCopyAll} className="min-w-[120px]">
-                    {isCopied ? (
-                      <><Check className="w-4 h-4 mr-2" />Copied!</>
-                    ) : (
-                      <><Copy className="w-4 h-4 mr-2" />Copy All</>
-                    )}
+                    {isCopied ? <><Check className="w-4 h-4 mr-2" />Copied!</> : <><Copy className="w-4 h-4 mr-2" />Copy All</>}
                   </CustomButton>
                 </div>
               </div>
 
-              {/* Section cards */}
-              <div className="space-y-4">
-                {sectionStates.map((state, index) => {
-                  const isExpanded = expandedSections.has(index);
-                  const bodyText = state.explanation ?? state.section.content;
-                  const isLoading = state.explainState === "loading";
-                  const isDone = state.explainState === "done";
-                  const isError = state.explainState === "error";
+              {/* Sections */}
+              {sectionStates.map((sectionState, si) => {
+                const sectionDone = sectionState.mcqs.filter((m) => m.state === "done").length;
+                const sectionTotal = sectionState.mcqs.length;
+                const sectionLoading = sectionState.mcqs.filter((m) => m.state === "loading").length;
+                const sectionAllDone = sectionDone === sectionTotal;
 
-                  return (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: index * 0.04 }}
-                      className={`group bg-card rounded-2xl border shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden ${
-                        isDone
-                          ? "border-amber-200"
-                          : isError
-                          ? "border-red-200"
-                          : isLoading
-                          ? "border-blue-200"
-                          : "border-border"
-                      }`}
-                    >
-                      {/* Left accent bar */}
-                      <div
-                        className={`absolute left-0 top-0 bottom-0 w-1 transition-opacity duration-300 ${
-                          isDone
-                            ? "bg-gradient-to-b from-amber-400 to-amber-200 opacity-100"
-                            : isLoading
-                            ? "bg-gradient-to-b from-blue-400 to-blue-200 opacity-100"
-                            : isError
-                            ? "bg-gradient-to-b from-red-400 to-red-200 opacity-100"
-                            : "bg-gradient-to-b from-primary/40 to-primary/5 opacity-0 group-hover:opacity-100"
-                        }`}
-                      ></div>
-
-                      <div className="p-5 md:p-6">
-                        {/* Section header */}
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <span className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
-                              {index + 1}
-                            </span>
-                            <h3 className="text-lg font-bold text-foreground leading-snug">
-                              {state.section.title}
-                            </h3>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Status badge */}
-                            {isDone && (
-                              <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-                                ✒️ Explained
-                              </span>
-                            )}
-                            {isLoading && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium flex items-center gap-1 whitespace-nowrap">
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                Generating...
-                              </span>
-                            )}
-                            {isError && (
-                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1 whitespace-nowrap">
-                                <AlertCircle className="w-3 h-3" />
-                                Failed
-                              </span>
-                            )}
-
-                            {/* Per-section Explain button */}
-                            {!isLoading && (
-                              <button
-                                onClick={() => explainSingleSection(index)}
-                                className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
-                                  isDone
-                                    ? "bg-muted text-muted-foreground hover:bg-amber-50 hover:text-amber-700"
-                                    : isError
-                                    ? "bg-red-50 text-red-700 hover:bg-red-100"
-                                    : "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
-                                }`}
-                                title={isDone ? "Re-explain this section" : "Explain this section"}
-                              >
-                                {isDone ? "Re-explain" : isError ? "Retry" : "✒️ Explain"}
-                              </button>
-                            )}
-
-                            {/* Copy button */}
-                            <button
-                              onClick={() => navigator.clipboard.writeText(`${state.section.title}\n\n${bodyText}`)}
-                              className="p-1.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary hover:bg-muted rounded-lg transition-all duration-200"
-                              title="Copy section"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Expand/collapse */}
-                            <button
-                              onClick={() => toggleExpand(index)}
-                              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-all duration-200"
-                            >
-                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Error message */}
-                        {isError && state.errorMsg && (
-                          <div className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                            {state.errorMsg}
-                          </div>
+                return (
+                  <motion.div
+                    key={si}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: si * 0.04 }}
+                    className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden"
+                  >
+                    {/* Section header */}
+                    <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-muted/20">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                          {si + 1}
+                        </span>
+                        <h3 className="text-base font-bold text-foreground truncate">
+                          {sectionState.section.title}
+                        </h3>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {sectionTotal} MCQ{sectionTotal !== 1 ? "s" : ""}
+                        </span>
+                        {sectionDone > 0 && (
+                          <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${sectionAllDone ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}>
+                            ✒️ {sectionDone}/{sectionTotal}
+                          </span>
                         )}
-
-                        {/* Content */}
-                        <AnimatePresence initial={false}>
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden"
-                            >
-                              {isLoading ? (
-                                <div className="space-y-2 pt-2">
-                                  <div className="h-4 bg-blue-100 rounded-md w-full animate-pulse"></div>
-                                  <div className="h-4 bg-blue-100 rounded-md w-5/6 animate-pulse"></div>
-                                  <div className="h-4 bg-blue-100 rounded-md w-4/6 animate-pulse"></div>
-                                  <div className="h-4 bg-amber-50 rounded-md w-full animate-pulse mt-3"></div>
-                                  <div className="h-4 bg-amber-50 rounded-md w-3/4 animate-pulse"></div>
-                                </div>
-                              ) : isDone ? (
-                                <ExplainedContent text={bodyText} />
-                              ) : (
-                                <div className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
-                                  {state.section.content}
-                                </div>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!sectionAllDone && (
+                          <button
+                            onClick={() => explainSection(si)}
+                            disabled={sectionLoading > 0}
+                            className="text-xs px-2.5 py-1 rounded-lg font-medium bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20 transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {sectionLoading > 0 ? (
+                              <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Explaining...</span>
+                            ) : (
+                              "✒️ Explain Section"
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleCollapse(si)}
+                          className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors"
+                        >
+                          {sectionState.collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-              {/* Summary bar at bottom */}
+                    {/* MCQ list */}
+                    <AnimatePresence initial={false}>
+                      {!sectionState.collapsed && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="divide-y divide-border/60"
+                        >
+                          {sectionState.mcqs.map((mcq, mi) => {
+                            const isLoading = mcq.state === "loading";
+                            const isDone = mcq.state === "done";
+                            const isError = mcq.state === "error";
+
+                            return (
+                              <div
+                                key={mi}
+                                className={`relative p-5 transition-colors ${
+                                  isDone
+                                    ? "bg-amber-50/40"
+                                    : isLoading
+                                    ? "bg-blue-50/40"
+                                    : isError
+                                    ? "bg-red-50/30"
+                                    : ""
+                                }`}
+                              >
+                                {/* Left accent */}
+                                <div
+                                  className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+                                    isDone ? "bg-amber-400" : isLoading ? "bg-blue-400" : isError ? "bg-red-400" : "bg-transparent"
+                                  }`}
+                                />
+
+                                {/* MCQ header row */}
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                  <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">
+                                    MCQ {mi + 1}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {isDone && (
+                                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                                        ✒️ Explained
+                                      </span>
+                                    )}
+                                    {isLoading && (
+                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Generating...
+                                      </span>
+                                    )}
+                                    {isError && (
+                                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                        <AlertCircle className="w-3 h-3" />
+                                        Failed
+                                      </span>
+                                    )}
+                                    {/* Explain / Re-explain / Retry button */}
+                                    {!isLoading && (
+                                      <button
+                                        onClick={() => explainMCQ(si, mi)}
+                                        className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                                          isDone
+                                            ? "bg-muted text-muted-foreground hover:bg-amber-100 hover:text-amber-700"
+                                            : isError
+                                            ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                                            : "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                        }`}
+                                      >
+                                        {isDone ? "Re-explain" : isError ? "Retry" : "✒️ Explain"}
+                                      </button>
+                                    )}
+                                    {/* Copy MCQ */}
+                                    <button
+                                      onClick={() =>
+                                        navigator.clipboard.writeText(mcq.explanation ?? mcq.content)
+                                      }
+                                      className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors"
+                                      title="Copy"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Content */}
+                                {isLoading ? (
+                                  <div className="space-y-2 mt-2">
+                                    <div className="h-4 bg-blue-100 rounded-md w-full animate-pulse" />
+                                    <div className="h-4 bg-blue-100 rounded-md w-5/6 animate-pulse" />
+                                    <div className="h-4 bg-amber-50 rounded-md w-full animate-pulse mt-3" />
+                                    <div className="h-4 bg-amber-50 rounded-md w-3/4 animate-pulse" />
+                                  </div>
+                                ) : isDone ? (
+                                  <ExplainedContent text={mcq.explanation!} />
+                                ) : (
+                                  <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                                    {mcq.content}
+                                  </div>
+                                )}
+
+                                {isError && mcq.error && (
+                                  <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+                                    {mcq.error}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+
+              {/* Bottom bar */}
               {sectionStates.length > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/40 rounded-2xl border border-border">
-                  <div className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {allDone ? (
-                      <span className="text-amber-700 font-semibold">✒️ All {sectionStates.length} sections have explanations</span>
+                      <span className="text-amber-700 font-semibold">✒️ All {totalMCQs} MCQs have explanations</span>
                     ) : (
-                      <span>
-                        <span className="font-semibold text-foreground">{pendingCount}</span> section{pendingCount !== 1 ? "s" : ""} still need{pendingCount === 1 ? "s" : ""} explanation
-                      </span>
+                      <>
+                        <span className="font-semibold text-foreground">{totalMCQs - doneMCQs}</span> MCQ{totalMCQs - doneMCQs !== 1 ? "s" : ""} still need explanation
+                      </>
                     )}
-                  </div>
+                  </p>
                   <div className="flex gap-2">
-                    {!allDone && loadingCount === 0 && (
-                      <CustomButton size="sm" onClick={explainAllSections}>
+                    {!allDone && loadingMCQs === 0 && (
+                      <CustomButton size="sm" onClick={explainAll}>
                         <BookOpen className="w-4 h-4 mr-2" />
-                        {errorCount > 0 ? "Retry All Failed" : "Explain Remaining"}
+                        {errorMCQs > 0 ? "Retry Failed" : "Explain Remaining"}
                       </CustomButton>
                     )}
                     <CustomButton size="lg" onClick={handleReset} variant="secondary">
@@ -563,7 +692,6 @@ export default function Home() {
               )}
             </motion.div>
           )}
-
         </AnimatePresence>
       </div>
     </div>
