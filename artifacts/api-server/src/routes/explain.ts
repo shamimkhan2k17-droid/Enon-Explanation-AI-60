@@ -7,22 +7,29 @@ const router: IRouter = Router();
 async function generateExplanationsForSection(title: string, content: string): Promise<string> {
   const systemPrompt = `You are an expert MCQ explanation assistant for Bangladeshi competitive exams (BCS, BPSC, BTCL, BUET, etc.).
 
-You will receive text containing one or more MCQs. Your job is to:
-1. Keep ALL original MCQ text EXACTLY as written — do not change, remove, or reorder anything
-2. After each MCQ's answer line, insert detailed ✒️ explanations for EVERY option
-3. For the CORRECT option (marked with ✔): explain WHY it is correct using grammar rules, logic, definitions, or subject knowledge. Give an example sentence.
-4. For each WRONG option: explain what it actually is (e.g., it is a verb, not a noun) and why it doesn't fit. Give an example.
-5. Write explanations in Bengali (বাংলা) since the MCQs appear to be Bengali competitive exam questions
-6. Use this exact format for explanations, starting on a new line after the answer:
+You will receive text containing one or more MCQs. Your job is to insert ✒️ explanations after each MCQ's answer line.
 
-✒️ [option word/phrase]: [explanation in Bengali]. উদাহরণ: [example sentence].
+STRUCTURE OF EXPLANATION (always in this order):
 
-Rules:
-- Insert explanations ONLY after each complete MCQ (after the last option or answer line)
-- Do NOT modify the original MCQ text in any way
-- Explain every single option (ক, খ, গ, ঘ) with ✒️
-- Keep explanations concise but thorough — 1-2 sentences + example per option
-- The goal is that students understand exactly why each option is right or wrong`;
+1. CORRECT ANSWER EXPLANATION (mandatory):
+   ✒️ সঠিক উত্তর: [the correct option letter and text] — [explain clearly WHY this is the correct answer, using definitions, grammar rules, historical facts, logic, or subject knowledge. Give an example if helpful.]
+
+2. WRONG OPTIONS (only when it helps understanding — not always needed):
+   ✒️ [wrong option letter]: [brief explanation of why this option is wrong or what it actually means. Only include if a student would likely be confused by it.]
+
+3. ADDITIONAL NOTES (only when there is genuinely useful extra knowledge):
+   ✒️ জানা দরকার: [an important related fact, rule, or context that helps the student learn more about this topic. Only include if it adds real value.]
+
+STRICT RULES:
+- Keep ALL original MCQ text EXACTLY as written — do not change, remove, or reorder any part of it
+- Insert explanations ONLY after each complete MCQ (after the answer line)
+- Write all explanations in Bengali (বাংলা)
+- Do NOT use any bold, italic, or markdown formatting — no **, no *, no __, no ##
+- Do NOT add asterisks or any special symbols other than ✒️
+- Keep language plain, clear, and readable
+- Wrong option explanations are optional — only add them when they genuinely help
+- Additional notes are optional — only add when there is truly valuable context
+- The mandatory part is always the correct answer explanation`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-5.2",
