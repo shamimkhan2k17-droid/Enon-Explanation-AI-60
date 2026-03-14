@@ -4,19 +4,6 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router: IRouter = Router();
 
-// Strips Bengali option markers (ক) খ) গ) ঘ) and variants) from ✒️ explanation lines only.
-// The original MCQ text (options) is left untouched — only explanation lines are cleaned.
-function stripOptionMarkers(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      if (!line.trimStart().startsWith("✒️")) return line;
-      // Remove patterns like: ক) ক। ক: খ) খ। etc. (with optional trailing space)
-      return line.replace(/[কখগঘ][)।:\s]\s*/g, "");
-    })
-    .join("\n");
-}
-
 async function generateExplanationsForSection(title: string, content: string): Promise<string> {
   const systemPrompt = `You are an expert MCQ explanation assistant for Bangladeshi competitive exams (BCS, BPSC, BTCL, BUET, etc.).
 
@@ -62,7 +49,7 @@ STRICT RULES:
     console.error(`Empty response for section "${title}". Finish reason:`, completion.choices[0]?.finish_reason);
     return content;
   }
-  return stripOptionMarkers(text);
+  return text;
 }
 
 router.post("/text/explain", async (req, res) => {
