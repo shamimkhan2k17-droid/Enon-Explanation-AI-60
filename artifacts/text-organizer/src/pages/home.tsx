@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, Copy, Check, ArrowLeft, Loader2, FileText,
   Trash2, RefreshCcw, BookOpen, AlertCircle, ChevronDown, ChevronUp,
-  ChevronsDown
+  ChevronsDown, Pencil, X, Save
 } from "lucide-react";
 import { useOrganizeText } from "@workspace/api-client-react";
 import { CustomButton } from "@/components/ui/custom-button";
@@ -16,6 +16,8 @@ interface MCQState {
   explanation: string | null;
   state: ExplainState;
   error: string | null;
+  isEditing: boolean;
+  editDraft: string;
 }
 
 interface SectionState {
@@ -126,6 +128,8 @@ export default function Home() {
             explanation: null,
             state: "idle" as ExplainState,
             error: null,
+            isEditing: false,
+            editDraft: "",
           })),
           collapsed: false,
         }))
@@ -325,6 +329,76 @@ export default function Home() {
   const handleEdit = () => {
     resetOrganize();
     setSectionStates([]);
+  };
+
+  const startEditing = (si: number, mi: number) => {
+    setSectionStates((prev) =>
+      prev.map((s, sIdx) =>
+        sIdx !== si
+          ? s
+          : {
+              ...s,
+              mcqs: s.mcqs.map((m, mIdx) =>
+                mIdx !== mi
+                  ? m
+                  : { ...m, isEditing: true, editDraft: m.explanation ?? m.content }
+              ),
+            }
+      )
+    );
+  };
+
+  const cancelEditing = (si: number, mi: number) => {
+    setSectionStates((prev) =>
+      prev.map((s, sIdx) =>
+        sIdx !== si
+          ? s
+          : {
+              ...s,
+              mcqs: s.mcqs.map((m, mIdx) =>
+                mIdx !== mi ? m : { ...m, isEditing: false, editDraft: "" }
+              ),
+            }
+      )
+    );
+  };
+
+  const saveEditing = (si: number, mi: number) => {
+    setSectionStates((prev) =>
+      prev.map((s, sIdx) =>
+        sIdx !== si
+          ? s
+          : {
+              ...s,
+              mcqs: s.mcqs.map((m, mIdx) =>
+                mIdx !== mi
+                  ? m
+                  : {
+                      ...m,
+                      explanation: m.editDraft,
+                      state: "done" as ExplainState,
+                      isEditing: false,
+                      editDraft: "",
+                    }
+              ),
+            }
+      )
+    );
+  };
+
+  const updateEditDraft = (si: number, mi: number, value: string) => {
+    setSectionStates((prev) =>
+      prev.map((s, sIdx) =>
+        sIdx !== si
+          ? s
+          : {
+              ...s,
+              mcqs: s.mcqs.map((m, mIdx) =>
+                mIdx !== mi ? m : { ...m, editDraft: value }
+              ),
+            }
+      )
+    );
   };
 
   const toggleCollapse = (si: number) => {
@@ -592,11 +666,15 @@ export default function Home() {
                             const isDone = mcq.state === "done";
                             const isError = mcq.state === "error";
 
+                            const isEditingMCQ = mcq.isEditing;
+
                             return (
                               <div
                                 key={mi}
                                 className={`relative p-5 transition-colors ${
-                                  isDone
+                                  isEditingMCQ
+                                    ? "bg-violet-50/40"
+                                    : isDone
                                     ? "bg-amber-50/40"
                                     : isLoading
                                     ? "bg-blue-50/40"
@@ -608,7 +686,7 @@ export default function Home() {
                                 {/* Left accent */}
                                 <div
                                   className={`absolute left-0 top-0 bottom-0 w-0.5 ${
-                                    isDone ? "bg-amber-400" : isLoading ? "bg-blue-400" : isError ? "bg-red-400" : "bg-transparent"
+                                    isEditingMCQ ? "bg-violet-400" : isDone ? "bg-amber-400" : isLoading ? "bg-blue-400" : isError ? "bg-red-400" : "bg-transparent"
                                   }`}
                                 />
 
@@ -618,53 +696,94 @@ export default function Home() {
                                     MCQ {mi + 1}
                                   </span>
                                   <div className="flex items-center gap-1.5 shrink-0">
-                                    {isDone && (
-                                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                                        ✒️ Explained
-                                      </span>
+                                    {isEditingMCQ ? (
+                                      <>
+                                        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                                          Editing
+                                        </span>
+                                        <button
+                                          onClick={() => saveEditing(si, mi)}
+                                          className="text-xs px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap bg-violet-600 text-white hover:bg-violet-700 flex items-center gap-1"
+                                        >
+                                          <Save className="w-3 h-3" />
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={() => cancelEditing(si, mi)}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-muted rounded-lg transition-colors"
+                                          title="Cancel"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {isDone && (
+                                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                                            ✒️ Explained
+                                          </span>
+                                        )}
+                                        {isLoading && (
+                                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                            Generating...
+                                          </span>
+                                        )}
+                                        {isError && (
+                                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" />
+                                            Failed
+                                          </span>
+                                        )}
+                                        {/* Edit button — available whenever there's content to edit */}
+                                        {!isLoading && (isDone || !isDone) && (
+                                          <button
+                                            onClick={() => startEditing(si, mi)}
+                                            className="p-1.5 text-muted-foreground hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                            title="Edit explanation"
+                                          >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {/* Explain / Re-explain / Retry button */}
+                                        {!isLoading && (
+                                          <button
+                                            onClick={() => explainMCQ(si, mi)}
+                                            className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                                              isDone
+                                                ? "bg-muted text-muted-foreground hover:bg-amber-100 hover:text-amber-700"
+                                                : isError
+                                                ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                                                : "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                            }`}
+                                          >
+                                            {isDone ? "Re-explain" : isError ? "Retry" : "✒️ Explain"}
+                                          </button>
+                                        )}
+                                        {/* Copy MCQ */}
+                                        <button
+                                          onClick={() =>
+                                            navigator.clipboard.writeText(mcq.explanation ?? mcq.content)
+                                          }
+                                          className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors"
+                                          title="Copy"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                      </>
                                     )}
-                                    {isLoading && (
-                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                        Generating...
-                                      </span>
-                                    )}
-                                    {isError && (
-                                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" />
-                                        Failed
-                                      </span>
-                                    )}
-                                    {/* Explain / Re-explain / Retry button */}
-                                    {!isLoading && (
-                                      <button
-                                        onClick={() => explainMCQ(si, mi)}
-                                        className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                                          isDone
-                                            ? "bg-muted text-muted-foreground hover:bg-amber-100 hover:text-amber-700"
-                                            : isError
-                                            ? "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
-                                            : "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
-                                        }`}
-                                      >
-                                        {isDone ? "Re-explain" : isError ? "Retry" : "✒️ Explain"}
-                                      </button>
-                                    )}
-                                    {/* Copy MCQ */}
-                                    <button
-                                      onClick={() =>
-                                        navigator.clipboard.writeText(mcq.explanation ?? mcq.content)
-                                      }
-                                      className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors"
-                                      title="Copy"
-                                    >
-                                      <Copy className="w-3.5 h-3.5" />
-                                    </button>
                                   </div>
                                 </div>
 
                                 {/* Content */}
-                                {isLoading ? (
+                                {isEditingMCQ ? (
+                                  <textarea
+                                    value={mcq.editDraft}
+                                    onChange={(e) => updateEditDraft(si, mi, e.target.value)}
+                                    className="w-full min-h-[160px] p-3 text-sm leading-relaxed bg-white border border-violet-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-300 resize-y font-mono text-foreground"
+                                    autoFocus
+                                  />
+                                ) : isLoading ? (
                                   <div className="space-y-2 mt-2">
                                     <div className="h-4 bg-blue-100 rounded-md w-full animate-pulse" />
                                     <div className="h-4 bg-blue-100 rounded-md w-5/6 animate-pulse" />
