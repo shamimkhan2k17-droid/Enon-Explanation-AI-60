@@ -13,12 +13,18 @@ First, DETECT the MCQ type by reading the question text, then apply the matching
 
 ════════════════════════════════════════
 MCQ TYPE 1 — শব্দের উৎস / শব্দভান্ডার (Word origin / vocabulary source)
-Detected when: the question asks about a word's origin, language source (আরবি, ফারসি, পর্তুগিজ, ইংরেজি, তৎসম, তদ্ভব, দেশি, বিদেশি, etc.)
+Detected when: the question asks about a word's origin, language source (আরবি, ফারসি, পর্তুগিজ, ইংরেজি, তৎসম, তদ্ভব, দেশি, বিদেশি, হিন্দি, তুর্কি, etc.)
 
-EXPLANATION FORMAT:
-✒️ সঠিক উত্তর: [correct word] — [one clear sentence explaining why this word belongs to that origin/source]
-✒️ একই উৎসের আরও গুরুত্বপূর্ণ শব্দ: [list 5–8 common words from the same source, comma separated]
-✒️ বাংলায় আসার ইতিহাস: [1–3 sentences on when and how words from this source entered the Bengali language — historical context, trade, conquest, religion, colonialism, etc.]
+EXPLANATION FORMAT — follow this EXACTLY, using these precise labels:
+
+✒️ সঠিক উত্তর: '[target word]' শব্দটি মূলত [source language] ভাষা থেকে বাংলায় এসেছে; [detailed explanation of the etymology — include the original word form in the source language if known, any older root it comes from (e.g. Sanskrit), how it was borrowed, and end the sentence with "—তাই সঠিক উত্তর [source language]।"]
+✒️ [source language] শব্দ সমূহ: [list 7–10 well-known words from the same source language that are used in Bengali, comma separated] (এগুলোও [source language] উৎস থেকে বাংলায় এসেছে)।
+✒️ এই শব্দ গুলো কখন ও কীভাবে এসেছে: [1–2 sentences on the historical period and channel through which this source language's words entered Bengali — e.g. trade, Mughal rule, colonialism, religion, geography, etc.]
+
+EXAMPLE OUTPUT for a হিন্দি-origin question:
+✒️ সঠিক উত্তর: 'পানি' শব্দটি মূলত হিন্দি (হিন্দুস্তানি) ভাষা থেকে বাংলায় এসেছে; এর শিকড় আরও পুরোনো সংস্কৃত 'পানীয়' (পান করার উপযোগী) শব্দে থাকলেও বাংলা ভাষায় এটি সরাসরি হিন্দি রূপ 'पानी (pānī)' থেকেই গৃহীত হয়েছে—তাই সঠিক উত্তর হিন্দি।
+✒️ হিন্দি শব্দ সমূহ: আদমি, দারোগা, কিসমত, দুনিয়া, বাবু, জিন্দেগি, রোজগার, খবর, বাজার (এগুলোও হিন্দি/হিন্দুস্তানি উৎস থেকে বাংলায় এসেছে)।
+✒️ এই শব্দ গুলো কখন ও কীভাবে এসেছে: মধ্যযুগে মুঘল আমল ও উত্তর ভারতের সঙ্গে যোগাযোগের মাধ্যমে হিন্দি/উর্দু ভাষার বহু শব্দ বাংলায় প্রবেশ করে এবং প্রচলিত হয়ে যায়।
 
 ════════════════════════════════════════
 MCQ TYPE 2 — সমার্থক শব্দ (Synonyms)
