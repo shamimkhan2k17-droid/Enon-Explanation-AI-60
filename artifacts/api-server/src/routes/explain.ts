@@ -9,28 +9,54 @@ async function generateExplanationsForSection(title: string, content: string): P
 
 You will receive text containing one or more MCQs. Your job is to insert ✒️ explanations after each MCQ's answer line.
 
-STRUCTURE OF EXPLANATION (always in this order):
+First, DETECT the MCQ type by reading the question text, then apply the matching explanation format below.
 
-1. CORRECT ANSWER EXPLANATION (mandatory):
-   ✒️ সঠিক উত্তর: [the correct option letter and text] — [explain clearly WHY this is the correct answer, using definitions, grammar rules, historical facts, logic, or subject knowledge. Give an example if helpful.]
+════════════════════════════════════════
+MCQ TYPE 1 — শব্দের উৎস / শব্দভান্ডার (Word origin / vocabulary source)
+Detected when: the question asks about a word's origin, language source (আরবি, ফারসি, পর্তুগিজ, ইংরেজি, তৎসম, তদ্ভব, দেশি, বিদেশি, etc.)
 
-2. WRONG OPTIONS (only when it helps understanding — not always needed):
-   ✒️ [wrong option letter]: [brief explanation of why this option is wrong or what it actually means. Only include if a student would likely be confused by it.]
+EXPLANATION FORMAT:
+✒️ সঠিক উত্তর: [correct word] — [one clear sentence explaining why this word belongs to that origin/source]
+✒️ একই উৎসের আরও গুরুত্বপূর্ণ শব্দ: [list 5–8 common words from the same source, comma separated]
+✒️ বাংলায় আসার ইতিহাস: [1–3 sentences on when and how words from this source entered the Bengali language — historical context, trade, conquest, religion, colonialism, etc.]
 
-3. ADDITIONAL NOTES (only when there is genuinely useful extra knowledge):
-   ✒️ জানা দরকার: [an important related fact, rule, or context that helps the student learn more about this topic. Only include if it adds real value.]
+════════════════════════════════════════
+MCQ TYPE 2 — সমার্থক শব্দ (Synonyms)
+Detected when: the question asks for a synonym, same-meaning word, or the question contains "সমার্থক", "প্রতিশব্দ", "একই অর্থ", etc.
 
-STRICT RULES:
+EXPLANATION FORMAT:
+✒️ সঠিক উত্তর: [correct synonym] — [explain clearly why this word means the same as the target word — what shared meaning or root they have]
+✒️ [target word]-এর সকল প্রচলিত সমার্থক শব্দ: [list as many synonyms as you know, comma separated]
+✒️ জানা দরকার: [any helpful extra note — e.g. nuance differences, usage context, or a memorable example sentence — only if genuinely useful]
+
+════════════════════════════════════════
+MCQ TYPE 3 — বিপরীত শব্দ (Antonyms)
+Detected when: the question asks for an opposite or antonym, or contains "বিপরীত", "বিপরীতার্থক", "বিরুদ্ধ অর্থ", etc.
+
+EXPLANATION FORMAT:
+✒️ সঠিক উত্তর: [correct antonym] — [explain why this is the exact opposite of the target word — what semantic contrast they have]
+✒️ বাকি অপশনগুলোর বিপরীত শব্দ: [for each wrong option, write: "অপশন শব্দ → তার বিপরীত শব্দ", all on the same line, separated by | ]
+✒️ জানা দরকার: [any helpful extra note — only if genuinely useful]
+
+════════════════════════════════════════
+MCQ TYPE 4 — General / Other (বাকি সব ধরনের প্রশ্ন)
+Used when none of the above types match.
+
+EXPLANATION FORMAT:
+✒️ সঠিক উত্তর: [correct option text] — [explain clearly WHY this is correct using definitions, grammar rules, historical facts, logic, or subject knowledge]
+✒️ [wrong option text]: [brief note on why it is wrong — only when a student would likely be confused. Optional.]
+✒️ জানা দরকার: [an important related fact or rule — only when it adds real value. Optional.]
+
+════════════════════════════════════════
+STRICT RULES FOR ALL TYPES:
 - Keep ALL original MCQ text EXACTLY as written — do not change, remove, or reorder any part of it
 - Insert explanations ONLY after each complete MCQ (after the answer line)
 - Write all explanations in Bengali (বাংলা)
 - Do NOT use any bold, italic, or markdown formatting — no **, no *, no __, no ##
 - Do NOT add asterisks or any special symbols other than ✒️
-- Do NOT include Bengali option markers (ক, খ, গ, ঘ) or any option labels inside the explanation text — refer to options by their actual content or meaning, never by their letter marker
+- Do NOT include Bengali option markers (ক, খ, গ, ঘ) inside the explanation text — refer to options by their actual word or meaning
 - Keep language plain, clear, and readable
-- Wrong option explanations are optional — only add them when they genuinely help
-- Additional notes are optional — only add when there is truly valuable context
-- The mandatory part is always the correct answer explanation`;
+- Always match the MCQ type first before writing the explanation`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-5.2",
