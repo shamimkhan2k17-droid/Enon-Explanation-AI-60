@@ -5,7 +5,8 @@ import {
   Trash2, RefreshCcw, BookOpen, AlertCircle, ChevronDown, ChevronUp,
   ChevronsDown, Pencil, X, Save, Key
 } from "lucide-react";
-import { useOrganizeText } from "@workspace/api-client-react";
+import { useOrganizeText, organizeText } from "@workspace/api-client-react";
+import { useMutation } from "@tanstack/react-query";
 import { CustomButton } from "@/components/ui/custom-button";
 import { ApiManagerModal } from "@/components/ApiManagerModal";
 import { useApiConfig } from "@/hooks/useApiConfig";
@@ -138,7 +139,10 @@ export default function Home() {
     data: organizeData,
     reset: resetOrganize,
     error: organizeError,
-  } = useOrganizeText();
+  } = useMutation({
+    mutationFn: ({ data }: { data: { text: string } }) =>
+      organizeText(data, { headers: activeApiHeaders }),
+  });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mcqRefs = useRef<Record<string, HTMLDivElement | null>>({});

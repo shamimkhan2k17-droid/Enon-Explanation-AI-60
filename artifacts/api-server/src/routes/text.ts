@@ -1,22 +1,21 @@
 import { Router, type IRouter, type Request } from "express";
 import { OrganizeTextBody } from "@workspace/api-zod";
-import { openai as defaultOpenai } from "@workspace/integrations-openai-ai-server";
 import OpenAI from "openai";
 
 const router: IRouter = Router();
 
-function getOpenAIClient(req: Request) {
+function getOpenAIClient(req: Request): { client: OpenAI; model: string } | null {
   const apiKey = req.headers["x-api-key"] as string | undefined;
   const baseURL = req.headers["x-api-base-url"] as string | undefined;
   const model = (req.headers["x-api-model"] as string | undefined) || "gpt-4o";
 
-  if (apiKey && apiKey.trim()) {
-    return {
-      client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
-      model,
-    };
+  if (!apiKey || !apiKey.trim()) {
+    return null;
   }
-  return { client: defaultOpenai, model: "gpt-5.2" };
+  return {
+    client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
+    model,
+  };
 }
 
 function splitIntoParagraphs(text: string): string[] {
@@ -38,6 +37,12 @@ router.post("/text/organize", async (req, res) => {
 
     if (!text || text.trim().length === 0) {
       res.status(400).json({ error: "Text cannot be empty." });
+      return;
+    }
+
+    const apiConfig = getOpenAIClient(req);
+    if (!apiConfig) {
+      res.status(400).json({ error: "API key not configured. Please add an API key from the API button." });
       return;
     }
 
@@ -73,7 +78,7 @@ Rules:
 - Order topics logically
 - Do NOT include any paragraph text in your response — only indices`;
 
-    const { client, model } = getOpenAIClient(req);
+    const { client, model } = apiConfig;
 
     const completion = await client.chat.completions.create({
       model,

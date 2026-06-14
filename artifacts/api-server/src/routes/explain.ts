@@ -1,22 +1,21 @@
 import { Router, type IRouter, type Request } from "express";
 import { ExplainMcqBody } from "@workspace/api-zod";
-import { openai as defaultOpenai } from "@workspace/integrations-openai-ai-server";
 import OpenAI from "openai";
 
 const router: IRouter = Router();
 
-function getOpenAIClient(req: Request) {
+function getOpenAIClient(req: Request): { client: OpenAI; model: string } | null {
   const apiKey = req.headers["x-api-key"] as string | undefined;
   const baseURL = req.headers["x-api-base-url"] as string | undefined;
   const model = (req.headers["x-api-model"] as string | undefined) || "gpt-4o";
 
-  if (apiKey && apiKey.trim()) {
-    return {
-      client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
-      model,
-    };
+  if (!apiKey || !apiKey.trim()) {
+    return null;
   }
-  return { client: defaultOpenai, model: "gpt-5.2" };
+  return {
+    client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
+    model,
+  };
 }
 
 async function generateExplanationsForSection(
@@ -148,15 +147,20 @@ router.post("/text/explain", async (req, res) => {
       return;
     }
 
-    const { client, model } = getOpenAIClient(req);
+    const apiConfig = getOpenAIClient(req);
+    if (!apiConfig) {
+      res.status(400).json({ error: "API key not configured. Please add an API key from the API button." });
+      return;
+    }
 
+    const { client, model } = apiConfig;
     const CONCURRENCY = 3;
     const results: Array<{ title: string; content: string; explanation: string }> = new Array(sections.length);
 
     for (let i = 0; i < sections.length; i += CONCURRENCY) {
       const batch = sections.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(
-        batch.map(async (section, batchIdx) => {
+        batch.map(async (section) => {
           const explanation = await generateExplanationsForSection(section.title, section.content, client, model);
           return { title: section.title, content: section.content, explanation };
         })
