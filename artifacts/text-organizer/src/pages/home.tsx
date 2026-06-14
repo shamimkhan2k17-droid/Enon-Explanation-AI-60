@@ -401,6 +401,16 @@ export default function Home() {
     );
   };
 
+  const deleteMCQ = (si: number, mi: number) => {
+    setSectionStates((prev) =>
+      prev.map((s, sIdx) =>
+        sIdx !== si
+          ? s
+          : { ...s, mcqs: s.mcqs.filter((_, mIdx) => mIdx !== mi) }
+      )
+    );
+  };
+
   const toggleCollapse = (si: number) => {
     setSectionStates((prev) =>
       prev.map((s, i) => (i === si ? { ...s, collapsed: !s.collapsed } : s))
@@ -769,6 +779,14 @@ export default function Home() {
                                           title="Copy"
                                         >
                                           <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                        {/* Delete MCQ */}
+                                        <button
+                                          onClick={() => deleteMCQ(si, mi)}
+                                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete MCQ"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </>
                                     )}
