@@ -23,13 +23,14 @@ interface MCQState {
 interface SectionState {
   section: Section;
   mcqs: MCQState[];
+  skipped: string[];
   collapsed: boolean;
 }
 
 // ── MCQ parser ────────────────────────────────────────────────────────────────
-// Splits section content into individual MCQ blocks.
+// Splits section content into MCQ blocks and skipped (non-MCQ) blocks.
 // A new MCQ starts when a line begins with a Bengali or Arabic numeral followed by . ) or ।
-function parseMCQs(content: string): string[] {
+function parseMCQs(content: string): { mcqs: string[]; skipped: string[] } {
   const lines = content.split("\n");
   const blocks: string[] = [];
   let current: string[] = [];
@@ -49,9 +50,25 @@ function parseMCQs(content: string): string[] {
     blocks.push(current.join("\n").trim());
   }
 
-  const result = blocks.filter((b) => b.trim());
-  // If only one block (couldn't split), return as-is
-  return result.length > 0 ? result : [content.trim()];
+  const allBlocks = blocks.filter((b) => b.trim());
+
+  // Separate MCQ blocks (start with a numeral) from skipped blocks
+  const mcqs: string[] = [];
+  const skipped: string[] = [];
+  for (const block of allBlocks) {
+    if (startsNewMCQ(block.split("\n")[0])) {
+      mcqs.push(block);
+    } else {
+      skipped.push(block);
+    }
+  }
+
+  // If nothing parsed as MCQ, treat everything as one MCQ block (fallback)
+  if (mcqs.length === 0 && skipped.length > 0) {
+    return { mcqs: [content.trim()], skipped: [] };
+  }
+
+  return { mcqs, skipped };
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
@@ -99,6 +116,7 @@ export default function Home() {
   const [text, setText] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [sectionStates, setSectionStates] = useState<SectionState[]>([]);
+  const [skippedCollapsed, setSkippedCollapsed] = useState(false);
 
   const {
     mutate: organize,
@@ -121,18 +139,22 @@ export default function Home() {
   useEffect(() => {
     if (organizeData?.sections) {
       setSectionStates(
-        organizeData.sections.map((s) => ({
-          section: s,
-          mcqs: parseMCQs(s.content).map((mcqContent) => ({
-            content: mcqContent,
-            explanation: null,
-            state: "idle" as ExplainState,
-            error: null,
-            isEditing: false,
-            editDraft: "",
-          })),
-          collapsed: false,
-        }))
+        organizeData.sections.map((s) => {
+          const { mcqs, skipped } = parseMCQs(s.content);
+          return {
+            section: s,
+            mcqs: mcqs.map((mcqContent) => ({
+              content: mcqContent,
+              explanation: null,
+              state: "idle" as ExplainState,
+              error: null,
+              isEditing: false,
+              editDraft: "",
+            })),
+            skipped,
+            collapsed: false,
+          };
+        })
       );
     }
   }, [organizeData]);
@@ -432,6 +454,9 @@ export default function Home() {
     0
   );
   const allDone = totalMCQs > 0 && doneMCQs === totalMCQs;
+  const allSkipped = sectionStates.flatMap((s) =>
+    s.skipped.map((text) => ({ sectionTitle: s.section.title, text }))
+  );
 
   return (
     <div className="min-h-screen pb-24 pt-12 px-4 sm:px-6 lg:px-8 selection:bg-primary/10">
@@ -604,6 +629,57 @@ export default function Home() {
                   </CustomButton>
                 </div>
               </div>
+
+              {/* Skipped content panel */}
+              {allSkipped.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-orange-50 border border-orange-200 rounded-2xl overflow-hidden"
+                >
+                  <button
+                    onClick={() => setSkippedCollapsed((p) => !p)}
+                    className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-orange-100/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-orange-500 shrink-0" />
+                      <span className="text-sm font-semibold text-orange-800">
+                        {allSkipped.length} টি অংশ MCQ হিসেবে চেনা যায়নি
+                      </span>
+                      <span className="text-xs text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
+                        বাদ পড়েছে
+                      </span>
+                    </div>
+                    {skippedCollapsed ? (
+                      <ChevronDown className="w-4 h-4 text-orange-500 shrink-0" />
+                    ) : (
+                      <ChevronUp className="w-4 h-4 text-orange-500 shrink-0" />
+                    )}
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {!skippedCollapsed && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="divide-y divide-orange-200/70"
+                      >
+                        {allSkipped.map((item, idx) => (
+                          <div key={idx} className="px-5 py-3 space-y-1">
+                            <span className="text-xs font-medium text-orange-500">
+                              {item.sectionTitle}
+                            </span>
+                            <pre className="text-sm text-orange-900 whitespace-pre-wrap font-sans leading-relaxed">
+                              {item.text}
+                            </pre>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
 
               {/* Sections */}
               {sectionStates.map((sectionState, si) => {
