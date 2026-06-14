@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Plus, Trash2, Check, Key, Zap, Globe } from "lucide-react";
+import { X, Plus, Trash2, Check, Key, Zap, Globe, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ApiConfig } from "@/hooks/useApiConfig";
 
@@ -13,8 +13,15 @@ interface Props {
   onSetActive: (id: string) => void;
 }
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4o";
+const PRESETS = [
+  { label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o", color: "bg-green-100 text-green-800 border-green-200" },
+  { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { label: "Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.0-flash", color: "bg-blue-100 text-blue-800 border-blue-200" },
+  { label: "Together AI", baseUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3-70b-chat-hf", color: "bg-purple-100 text-purple-800 border-purple-200" },
+  { label: "Mistral", baseUrl: "https://api.mistral.ai/v1", model: "mistral-large-latest", color: "bg-red-100 text-red-800 border-red-200" },
+  { label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
+  { label: "Custom", baseUrl: "", model: "", color: "bg-gray-100 text-gray-700 border-gray-200" },
+];
 
 export function ApiManagerModal({
   open,
@@ -26,13 +33,24 @@ export function ApiManagerModal({
   onSetActive,
 }: Props) {
   const [showForm, setShowForm] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     apiKey: "",
-    baseUrl: DEFAULT_BASE_URL,
-    model: DEFAULT_MODEL,
+    baseUrl: "",
+    model: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const applyPreset = (preset: typeof PRESETS[0]) => {
+    setSelectedPreset(preset.label);
+    setForm((p) => ({
+      ...p,
+      name: preset.label === "Custom" ? p.name : preset.label,
+      baseUrl: preset.baseUrl,
+      model: preset.model,
+    }));
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -52,13 +70,15 @@ export function ApiManagerModal({
       baseUrl: form.baseUrl.trim(),
       model: form.model.trim(),
     });
-    setForm({ name: "", apiKey: "", baseUrl: DEFAULT_BASE_URL, model: DEFAULT_MODEL });
+    setForm({ name: "", apiKey: "", baseUrl: "", model: "" });
+    setSelectedPreset(null);
     setErrors({});
     setShowForm(false);
   };
 
   const handleClose = () => {
     setShowForm(false);
+    setSelectedPreset(null);
     setErrors({});
     onClose();
   };
@@ -67,7 +87,6 @@ export function ApiManagerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <motion.div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         initial={{ opacity: 0 }}
@@ -76,7 +95,6 @@ export function ApiManagerModal({
         onClick={handleClose}
       />
 
-      {/* Modal */}
       <motion.div
         className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-border max-h-[90vh] overflow-hidden flex flex-col"
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -93,7 +111,7 @@ export function ApiManagerModal({
             <div>
               <h2 className="text-base font-bold text-foreground">API Manager</h2>
               <p className="text-xs text-muted-foreground">
-                {apis.length} টি API সংরক্ষিত
+                যেকোনো OpenAI-compatible API কাজ করবে
               </p>
             </div>
           </div>
@@ -107,7 +125,7 @@ export function ApiManagerModal({
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* API List */}
+          {/* Saved APIs */}
           {apis.length > 0 && (
             <div className="space-y-2">
               {apis.map((api) => {
@@ -130,18 +148,14 @@ export function ApiManagerModal({
                       <div className="flex items-start gap-3 min-w-0">
                         <div
                           className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                            isActive
-                              ? "border-primary bg-primary"
-                              : "border-border bg-white"
+                            isActive ? "border-primary bg-primary" : "border-border bg-white"
                           }`}
                         >
                           {isActive && <Check className="w-2.5 h-2.5 text-white" />}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground">
-                              {api.name}
-                            </span>
+                            <span className="font-semibold text-sm text-foreground">{api.name}</span>
                             {isActive && (
                               <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">
                                 Active
@@ -159,18 +173,13 @@ export function ApiManagerModal({
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <Key className="w-3 h-3 shrink-0" />
-                              <span className="font-mono">
-                                {api.apiKey.slice(0, 8)}••••••••
-                              </span>
+                              <span className="font-mono">{api.apiKey.slice(0, 8)}••••••••</span>
                             </div>
                           </div>
                         </div>
                       </div>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemove(api.id);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); onRemove(api.id); }}
                         className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
                         title="Delete"
                       >
@@ -184,10 +193,10 @@ export function ApiManagerModal({
           )}
 
           {apis.length === 0 && !showForm && (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-6 text-muted-foreground">
               <Key className="w-10 h-10 mx-auto mb-3 opacity-20" />
-              <p className="text-sm">কোনো API যুক্ত করা হয়নি।</p>
-              <p className="text-xs mt-1">নিচের বাটনে ক্লিক করে নতুন API যুক্ত করুন।</p>
+              <p className="text-sm font-medium">কোনো API যুক্ত করা হয়নি</p>
+              <p className="text-xs mt-1">নিচ থেকে একটি provider বেছে API যুক্ত করুন</p>
             </div>
           )}
 
@@ -201,63 +210,85 @@ export function ApiManagerModal({
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="bg-muted/30 rounded-xl border border-border p-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-foreground mb-3">নতুন API যুক্ত করুন</h3>
+                <div className="bg-muted/30 rounded-xl border border-border p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground">নতুন API যুক্ত করুন</h3>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">নাম *</label>
-                    <input
-                      type="text"
-                      placeholder="যেমন: My OpenAI Key"
-                      value={form.name}
-                      onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
-                        errors.name ? "border-destructive" : "border-border"
-                      }`}
-                    />
-                    {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                  {/* Provider presets */}
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Provider বেছে নিন:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRESETS.map((p) => (
+                        <button
+                          key={p.label}
+                          onClick={() => applyPreset(p)}
+                          className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all ${
+                            selectedPreset === p.label
+                              ? p.color + " ring-2 ring-offset-1 ring-current"
+                              : "bg-white border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">API Key *</label>
-                    <input
-                      type="password"
-                      placeholder="sk-..."
-                      value={form.apiKey}
-                      onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono ${
-                        errors.apiKey ? "border-destructive" : "border-border"
-                      }`}
-                    />
-                    {errors.apiKey && <p className="text-xs text-destructive">{errors.apiKey}</p>}
-                  </div>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">নাম *</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: My Groq Key"
+                        value={form.name}
+                        onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                        className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
+                          errors.name ? "border-destructive" : "border-border"
+                        }`}
+                      />
+                      {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                    </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Base URL *</label>
-                    <input
-                      type="url"
-                      placeholder="https://api.openai.com/v1"
-                      value={form.baseUrl}
-                      onChange={(e) => setForm((p) => ({ ...p, baseUrl: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
-                        errors.baseUrl ? "border-destructive" : "border-border"
-                      }`}
-                    />
-                    {errors.baseUrl && <p className="text-xs text-destructive">{errors.baseUrl}</p>}
-                  </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">API Key *</label>
+                      <input
+                        type="password"
+                        placeholder="sk-... / gsk-... / AIza..."
+                        value={form.apiKey}
+                        onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
+                        className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono ${
+                          errors.apiKey ? "border-destructive" : "border-border"
+                        }`}
+                      />
+                      {errors.apiKey && <p className="text-xs text-destructive">{errors.apiKey}</p>}
+                    </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Model *</label>
-                    <input
-                      type="text"
-                      placeholder="gpt-4o"
-                      value={form.model}
-                      onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
-                        errors.model ? "border-destructive" : "border-border"
-                      }`}
-                    />
-                    {errors.model && <p className="text-xs text-destructive">{errors.model}</p>}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">Base URL *</label>
+                      <input
+                        type="url"
+                        placeholder="https://api.openai.com/v1"
+                        value={form.baseUrl}
+                        onChange={(e) => setForm((p) => ({ ...p, baseUrl: e.target.value }))}
+                        className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
+                          errors.baseUrl ? "border-destructive" : "border-border"
+                        }`}
+                      />
+                      {errors.baseUrl && <p className="text-xs text-destructive">{errors.baseUrl}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">Model *</label>
+                      <input
+                        type="text"
+                        placeholder="gpt-4o / llama-3.3-70b-versatile"
+                        value={form.model}
+                        onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
+                        className={`w-full px-3 py-2 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
+                          errors.model ? "border-destructive" : "border-border"
+                        }`}
+                      />
+                      {errors.model && <p className="text-xs text-destructive">{errors.model}</p>}
+                    </div>
                   </div>
 
                   <div className="flex gap-2 pt-1">
@@ -269,10 +300,7 @@ export function ApiManagerModal({
                       যুক্ত করুন ও Active করুন
                     </button>
                     <button
-                      onClick={() => {
-                        setShowForm(false);
-                        setErrors({});
-                      }}
+                      onClick={() => { setShowForm(false); setSelectedPreset(null); setErrors({}); }}
                       className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted transition-colors"
                     >
                       বাতিল

@@ -61,22 +61,18 @@ router.post("/text/organize", async (req, res) => {
 Your job is to:
 1. Identify all distinct topics/themes across all paragraphs
 2. Assign each paragraph index to exactly one topic
-3. Return ONLY a compact JSON object — do NOT include any paragraph text in your response
+3. Return ONLY a raw JSON object — no markdown, no code fences, no explanation
 
-Output format (strict JSON):
-{
-  "topics": [
-    { "title": "Topic Title", "paragraphIndices": [0, 3, 5] },
-    { "title": "Another Topic", "paragraphIndices": [1, 2, 4] }
-  ]
-}
+Output format (strict JSON, nothing else):
+{"topics":[{"title":"Topic Title","paragraphIndices":[0,3,5]},{"title":"Another Topic","paragraphIndices":[1,2,4]}]}
 
 Rules:
 - Every paragraph index (0 to ${paragraphs.length - 1}) must appear in exactly one topic
 - Topic titles should be clear and descriptive (2-6 words)
 - Group related paragraphs together under the same topic
 - Order topics logically
-- Do NOT include any paragraph text in your response — only indices`;
+- Do NOT include any paragraph text — only indices
+- Output MUST start with { and end with } — no other text before or after`;
 
     const { client, model } = apiConfig;
 
@@ -87,25 +83,34 @@ Rules:
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Here are the ${paragraphs.length} paragraphs (numbered):\n\n${paragraphPreviews}\n\nPlease identify topics and assign paragraph indices.`,
+          content: `Here are the ${paragraphs.length} paragraphs (numbered):\n\n${paragraphPreviews}\n\nReturn ONLY the JSON object. No explanation, no markdown.`,
         },
       ],
-      response_format: { type: "json_object" },
     });
 
-    const responseText = completion.choices[0]?.message?.content;
-    if (!responseText) {
-      console.error("Empty response from OpenAI. Finish reason:", completion.choices[0]?.finish_reason);
-      res.status(500).json({ error: "No response from AI service. The text may be too complex — try breaking it into smaller pieces." });
+    const rawText = completion.choices[0]?.message?.content;
+    if (!rawText) {
+      console.error("Empty response from AI. Finish reason:", completion.choices[0]?.finish_reason);
+      res.status(500).json({ error: "AI থেকে কোনো response পাওয়া যায়নি। text টি ছোট করে চেষ্টা করুন।" });
       return;
+    }
+
+    // Extract JSON robustly — strip markdown fences if present
+    let responseText = rawText.trim();
+    const fenceMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) responseText = fenceMatch[1].trim();
+    const jsonStart = responseText.indexOf("{");
+    const jsonEnd = responseText.lastIndexOf("}");
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      responseText = responseText.slice(jsonStart, jsonEnd + 1);
     }
 
     let aiResult: { topics: Array<{ title: string; paragraphIndices: number[] }> };
     try {
       aiResult = JSON.parse(responseText);
     } catch (e) {
-      console.error("Failed to parse AI JSON:", responseText.slice(0, 500));
-      res.status(500).json({ error: "Failed to parse AI response." });
+      console.error("Failed to parse AI JSON:", rawText.slice(0, 500));
+      res.status(500).json({ error: "AI response parse করা যায়নি। আবার চেষ্টা করুন।" });
       return;
     }
 
