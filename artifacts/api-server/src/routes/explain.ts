@@ -171,9 +171,26 @@ router.post("/text/explain", async (req, res) => {
     }
 
     res.json({ sections: results });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating explanations:", error);
-    res.status(500).json({ error: "An error occurred while generating explanations." });
+
+    const status = error?.status ?? 500;
+    const apiMessage = error?.error?.message ?? error?.message;
+    const code = error?.code ?? error?.error?.code;
+
+    if (status === 401 || code === "invalid_api_key") {
+      res.status(401).json({ error: "API key টি সঠিক নয়। API Manager থেকে সঠিক key দিন।" });
+    } else if (status === 429) {
+      res.status(429).json({ error: "API rate limit শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।" });
+    } else if (status === 403) {
+      res.status(403).json({ error: "API key-টির এই model বা endpoint ব্যবহারের অনুমতি নেই।" });
+    } else if (code === "model_not_found") {
+      res.status(404).json({ error: "Model পাওয়া যায়নি। API Manager-এ সঠিক model নাম দিন।" });
+    } else if (apiMessage) {
+      res.status(status).json({ error: apiMessage });
+    } else {
+      res.status(500).json({ error: "Explanation তৈরি করতে সমস্যা হয়েছে। API connection চেক করুন।" });
+    }
   }
 });
 
