@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, Copy, Check, ArrowLeft, Loader2, FileText,
   Trash2, RefreshCcw, BookOpen, AlertCircle, ChevronDown, ChevronUp,
-  ChevronsDown, Pencil, X, Save
+  ChevronsDown, Pencil, X, Save, Key
 } from "lucide-react";
 import { useOrganizeText } from "@workspace/api-client-react";
 import { CustomButton } from "@/components/ui/custom-button";
+import { ApiManagerModal } from "@/components/ApiManagerModal";
+import { useApiConfig } from "@/hooks/useApiConfig";
 
 type Section = { title: string; content: string };
 type ExplainState = "idle" | "loading" | "done" | "error";
@@ -73,11 +75,12 @@ function parseMCQs(content: string): { mcqs: string[]; skipped: string[] } {
 
 // ── API helper ────────────────────────────────────────────────────────────────
 async function fetchExplanations(
-  sections: { title: string; content: string }[]
+  sections: { title: string; content: string }[],
+  apiHeaders?: Record<string, string>
 ): Promise<{ explanation: string }[]> {
   const res = await fetch("/api/text/explain", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(apiHeaders ?? {}) },
     body: JSON.stringify({ sections }),
   });
   if (!res.ok) {
@@ -117,6 +120,17 @@ export default function Home() {
   const [isCopied, setIsCopied] = useState(false);
   const [sectionStates, setSectionStates] = useState<SectionState[]>([]);
   const [skippedCollapsed, setSkippedCollapsed] = useState(false);
+  const [apiManagerOpen, setApiManagerOpen] = useState(false);
+
+  const { apis, activeApi, activeId, addApi, removeApi, setActiveId } = useApiConfig();
+
+  const activeApiHeaders: Record<string, string> | undefined = activeApi
+    ? {
+        "x-api-key": activeApi.apiKey,
+        "x-api-base-url": activeApi.baseUrl,
+        "x-api-model": activeApi.model,
+      }
+    : undefined;
 
   const {
     mutate: organize,
@@ -203,7 +217,7 @@ export default function Home() {
       try {
         const results = await fetchExplanations([
           { title: section.section.title, content: mcq.content },
-        ]);
+        ], activeApiHeaders);
         const explanation = results[0]?.explanation ?? mcq.content;
         setSectionStates((prev) =>
           prev.map((s, si) =>
@@ -274,7 +288,8 @@ export default function Home() {
             batch.map(({ m }) => ({
               title: section.section.title,
               content: m.content,
-            }))
+            })),
+            activeApiHeaders
           );
           setSectionStates((prev) =>
             prev.map((s, si) => {
@@ -303,7 +318,7 @@ export default function Home() {
         }
       }
     },
-    [sectionStates]
+    [sectionStates, activeApiHeaders]
   );
 
   // ── explain ALL pending MCQs across all sections ───────────────────────────
@@ -463,7 +478,25 @@ export default function Home() {
       <div className="max-w-4xl mx-auto space-y-8">
 
         {/* Header */}
-        <header className="text-center space-y-4 mb-12">
+        <header className="text-center space-y-4 mb-12 relative">
+          <div className="absolute top-0 right-0">
+            <button
+              onClick={() => setApiManagerOpen(true)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
+                activeApi
+                  ? "bg-primary text-white border-primary hover:bg-primary/90 shadow-sm"
+                  : "bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/40 hover:bg-primary/5"
+              }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>API</span>
+              {activeApi && (
+                <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full max-w-[80px] truncate">
+                  {activeApi.name}
+                </span>
+              )}
+            </button>
+          </div>
           <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-2 ring-1 ring-primary/10">
             <Sparkles className="w-6 h-6 text-primary" />
           </div>
@@ -937,6 +970,20 @@ export default function Home() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {apiManagerOpen && (
+          <ApiManagerModal
+            open={apiManagerOpen}
+            onClose={() => setApiManagerOpen(false)}
+            apis={apis}
+            activeId={activeId}
+            onAdd={addApi}
+            onRemove={removeApi}
+            onSetActive={setActiveId}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

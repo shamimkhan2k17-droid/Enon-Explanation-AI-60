@@ -1,10 +1,30 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { ExplainMcqBody } from "@workspace/api-zod";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openai as defaultOpenai } from "@workspace/integrations-openai-ai-server";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
 
-async function generateExplanationsForSection(title: string, content: string): Promise<string> {
+function getOpenAIClient(req: Request) {
+  const apiKey = req.headers["x-api-key"] as string | undefined;
+  const baseURL = req.headers["x-api-base-url"] as string | undefined;
+  const model = (req.headers["x-api-model"] as string | undefined) || "gpt-4o";
+
+  if (apiKey && apiKey.trim()) {
+    return {
+      client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
+      model,
+    };
+  }
+  return { client: defaultOpenai, model: "gpt-5.2" };
+}
+
+async function generateExplanationsForSection(
+  title: string,
+  content: string,
+  client: OpenAI,
+  model: string
+): Promise<string> {
   const systemPrompt = `তুমি বাংলাদেশের প্রতিযোগিতামূলক পরীক্ষার (BCS, BPSC, BTCL ইত্যাদি) জন্য একজন বিশেষজ্ঞ MCQ ব্যাখ্যাকারী।
 
 তোমার কাজ: প্রতিটি MCQ-এর উত্তর লাইনের পরে ✒️ চিহ্ন দিয়ে ব্যাখ্যা যোগ করা।
@@ -19,23 +39,6 @@ async function generateExplanationsForSection(title: string, content: string): P
 ✒️ সঠিক উত্তর: '[শব্দ]' শব্দটি মূলত [উৎস ভাষা] ভাষা থেকে বাংলায় এসেছে; [শব্দের ব্যুৎপত্তি বিস্তারিত — মূল ভাষায় শব্দটির রূপ, সংস্কৃত বা অন্য কোনো পুরনো মূল থাকলে সেটা উল্লেখ, কীভাবে ধার নেওয়া হয়েছে] — তাই সঠিক উত্তর [উৎস ভাষা]।
 ✒️ [উৎস ভাষা] শব্দ সমূহ: [একই উৎস ভাষা থেকে আসা ৭-১০টি পরিচিত বাংলা শব্দ, কমা দিয়ে আলাদা] (এগুলোও [উৎস ভাষা] উৎস থেকে বাংলায় এসেছে)।
 ✒️ এই শব্দ গুলো কখন ও কীভাবে এসেছে: [কোন ঐতিহাসিক সময়ে ও কোন পথে এই ভাষার শব্দ বাংলায় ঢুকেছে — বাণিজ্য, মুঘল শাসন, ঔপনিবেশিকতা, ধর্ম, ভৌগোলিক যোগাযোগ ইত্যাদি]
-
-উদাহরণ ইনপুট:
-৫) 'পানি' শব্দটি বাংলায় কোন ভাষা হতে এসেছে?
-ক) আরবি
-খ) ফারসি
-গ) তুর্কি
-ঘ) হিন্দি ✔
-
-উদাহরণ আউটপুট:
-৫) 'পানি' শব্দটি বাংলায় কোন ভাষা হতে এসেছে?
-ক) আরবি
-খ) ফারসি
-গ) তুর্কি
-ঘ) হিন্দি ✔
-✒️ সঠিক উত্তর: 'পানি' শব্দটি মূলত হিন্দি (হিন্দুস্তানি) ভাষা থেকে বাংলায় এসেছে; এর শিকড় আরও পুরোনো সংস্কৃত 'পানীয়' (পান করার উপযোগী) শব্দে থাকলেও বাংলা ভাষায় এটি সরাসরি হিন্দি রূপ 'पानी (pānī)' থেকেই গৃহীত হয়েছে — তাই সঠিক উত্তর হিন্দি।
-✒️ হিন্দি শব্দ সমূহ: আদমি, দারোগা, কিসমত, দুনিয়া, বাবু, জিন্দেগি, রোজগার, খবর, বাজার (এগুলোও হিন্দি/হিন্দুস্তানি উৎস থেকে বাংলায় এসেছে)।
-✒️ এই শব্দ গুলো কখন ও কীভাবে এসেছে: মধ্যযুগে মুঘল আমল ও উত্তর ভারতের সঙ্গে যোগাযোগের মাধ্যমে হিন্দি/উর্দু ভাষার বহু শব্দ বাংলায় প্রবেশ করে এবং প্রচলিত হয়ে যায়।
 
 ══════════════════════════════════════════════════
 ধরন ২ — সমার্থক শব্দ
@@ -63,43 +66,12 @@ async function generateExplanationsForSection(title: string, content: string): P
 ✒️ সঠিক উত্তর: '[সঠিক বাগধারা]' — অর্থ: [বাগধারাটির সম্পূর্ণ অর্থ ও ব্যাখ্যা। কোথা থেকে এসেছে বা কী প্রেক্ষাপটে ব্যবহার হয় সেটাও বলো।]
 ✒️ ব্যবহার: ১. [বাগধারাটি ব্যবহার করে একটি বাক্য] ২. [আরেকটি ভিন্ন প্রসঙ্গে বাক্য]
 
-উদাহরণ ইনপুট:
-৬৩। কোন বাগধারাটির অর্থ মারা যাওয়া?
-ক) কেউকেটা
-খ) কান পাতলা
-গ) কেতাদুরস্ত
-ঘ) অক্কা পাওয়া ✔
-
-উদাহরণ আউটপুট:
-৬৩। কোন বাগধারাটির অর্থ মারা যাওয়া?
-ক) কেউকেটা
-খ) কান পাতলা
-গ) কেতাদুরস্ত
-ঘ) অক্কা পাওয়া ✔
-✒️ সঠিক উত্তর: 'অক্কা পাওয়া' — অর্থ: মারা যাওয়া/প্রাণ ত্যাগ করা। কথ্য বাংলায় কোনো ব্যক্তি বা প্রাণী মৃত্যুবরণ করলে রসিকতা বা অনানুষ্ঠানিকভাবে এই বাগধারাটি ব্যবহার করা হয়।
-✒️ ব্যবহার: ১. অনেক দিন অসুস্থ থাকার পর শেষ পর্যন্ত সে অক্কা পেল। ২. বয়স হয়ে গেছে, যেকোনো সময় অক্কা পাওয়া অস্বাভাবিক নয়।
-
 ══════════════════════════════════════════════════
 ধরন ৫ — শুদ্ধ বানান
 চেনার উপায়: প্রশ্নে "শুদ্ধ বানান", "সঠিক বানান", "বানান শুদ্ধ", "কোনটির বানান শুদ্ধ" ইত্যাদি থাকে
 
 ব্যাখ্যার ফরম্যাট (হুবহু এই label ব্যবহার করবে):
 ✒️ [সঠিক বানান] (শুদ্ধ): এই বানানটি সম্পূর্ণ শুদ্ধ। '[শব্দ]' শব্দের অর্থ [শব্দের অর্থ]। [শব্দটির ব্যবহারের একটি বা দুটি উদাহরণ বাক্যসহ]।
-
-উদাহরণ ইনপুট:
-১) নিচের কোন বানানটি শুদ্ধ?
-ক) সুধি
-খ) সুধী ✔
-গ) সুধি
-ঘ) শুধী
-
-উদাহরণ আউটপুট:
-১) নিচের কোন বানানটি শুদ্ধ?
-ক) সুধি
-খ) সুধী ✔
-গ) সুধি
-ঘ) শুধী
-✒️ সুধী (শুদ্ধ): এই বানানটি সম্পূর্ণ শুদ্ধ। 'সুধী' শব্দের অর্থ জ্ঞানী, পণ্ডিত, বা বিদ্বান ব্যক্তি। এটি সম্মানসূচক সম্বোধন হিসেবে ব্যবহৃত হয়, যেমন – "সুধী মণ্ডলী", "প্রিয় সুধীগণ"।
 
 ══════════════════════════════════════════════════
 ধরন ৫ — বাংলা ভাষার ইতিহাস ও সাহিত্য
@@ -118,24 +90,6 @@ async function generateExplanationsForSection(title: string, content: string): P
 ✒️ [ভুল অপশন ১]: '[ভুল অপশন ১]' মানে [সংক্ষেপে অর্থ]।
 ✒️ [ভুল অপশন ২]: '[ভুল অপশন ২]' মানে [সংক্ষেপে অর্থ]।
 ✒️ [ভুল অপশন ৩]: '[ভুল অপশন ৩]' মানে [সংক্ষেপে অর্থ]।
-
-উদাহরণ ইনপুট:
-৩৫। 'যে নারীর স্বামী ও পুত্র নেই' এক কথায় কী বলে?
-ক) অনূঢ়া
-খ) কুমারী
-গ) নবোঢ়া
-ঘ) অবীরা ✔
-
-উদাহরণ আউটপুট:
-৩৫। 'যে নারীর স্বামী ও পুত্র নেই' এক কথায় কী বলে?
-ক) অনূঢ়া
-খ) কুমারী
-গ) নবোঢ়া
-ঘ) অবীরা ✔
-✒️ সঠিক উত্তর: অবীরা — 'বীরা' বলতে স্বামী বা পুত্রকে (নারীর রক্ষক/সহায়) বোঝায়; 'অবীরা' মানে যার বীর নেই, অর্থাৎ যে নারীর স্বামীও নেই, পুত্রও নেই—তাই সঠিক উত্তর অবীরা।
-✒️ অনূঢ়া: 'অনূঢ়া' মানে যে নারী এখনো বিবাহিতা নয় (অবিবাহিতা)।
-✒️ কুমারী: 'কুমারী' মানে অবিবাহিতা/কুমার (বিবাহ হয়নি বা কৌমার্যবতী)।
-✒️ নবোঢ়া: 'নবোঢ়া' মানে নববিবাহিতা/সদ্য বিবাহিত নারী।
 
 ══════════════════════════════════════════════════
 ধরন ৭ — সাধারণ (অন্য সব ধরনের প্রশ্ন)
@@ -159,8 +113,8 @@ async function generateExplanationsForSection(title: string, content: string): P
 - যদি ভুল অপশনগুলো সম্পূর্ণ irrelevant হয় (যেমন প্রশ্নটি সংখ্যা জিজ্ঞেস করছে এবং ভুল অপশনগুলো শুধু ভিন্ন সংখ্যা, অথবা ভুল অপশনগুলোর সাথে সঠিক উত্তর বা প্রশ্নের বিষয়বস্তুর কোনো সম্পর্ক নেই), তাহলে সেগুলো নিয়ে কিছু লিখবে না
 - উদাহরণ: "ভাষার মৌলিক অংশ কয়টি? — সঠিক উত্তর: চারটি" — এখানে ভুল অপশন দুইটি/তিনটি/পাঁচটি সম্পূর্ণ irrelevant, শুধু সংখ্যা, তাই এগুলো নিয়ে কিছু লিখবে না; শুধু সঠিক উত্তর ও প্রয়োজনীয় তথ্য লিখবে`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-5.2",
+  const completion = await client.chat.completions.create({
+    model,
     max_completion_tokens: 8192,
     messages: [
       { role: "system", content: systemPrompt },
@@ -194,6 +148,8 @@ router.post("/text/explain", async (req, res) => {
       return;
     }
 
+    const { client, model } = getOpenAIClient(req);
+
     const CONCURRENCY = 3;
     const results: Array<{ title: string; content: string; explanation: string }> = new Array(sections.length);
 
@@ -201,7 +157,7 @@ router.post("/text/explain", async (req, res) => {
       const batch = sections.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(
         batch.map(async (section, batchIdx) => {
-          const explanation = await generateExplanationsForSection(section.title, section.content);
+          const explanation = await generateExplanationsForSection(section.title, section.content, client, model);
           return { title: section.title, content: section.content, explanation };
         })
       );

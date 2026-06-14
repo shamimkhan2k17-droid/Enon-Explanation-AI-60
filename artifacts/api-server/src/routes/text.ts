@@ -1,8 +1,23 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { OrganizeTextBody } from "@workspace/api-zod";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openai as defaultOpenai } from "@workspace/integrations-openai-ai-server";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
+
+function getOpenAIClient(req: Request) {
+  const apiKey = req.headers["x-api-key"] as string | undefined;
+  const baseURL = req.headers["x-api-base-url"] as string | undefined;
+  const model = (req.headers["x-api-model"] as string | undefined) || "gpt-4o";
+
+  if (apiKey && apiKey.trim()) {
+    return {
+      client: new OpenAI({ apiKey: apiKey.trim(), ...(baseURL ? { baseURL: baseURL.trim() } : {}) }),
+      model,
+    };
+  }
+  return { client: defaultOpenai, model: "gpt-5.2" };
+}
 
 function splitIntoParagraphs(text: string): string[] {
   return text
@@ -58,8 +73,10 @@ Rules:
 - Order topics logically
 - Do NOT include any paragraph text in your response — only indices`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5.2",
+    const { client, model } = getOpenAIClient(req);
+
+    const completion = await client.chat.completions.create({
+      model,
       max_completion_tokens: 8192,
       messages: [
         { role: "system", content: systemPrompt },
