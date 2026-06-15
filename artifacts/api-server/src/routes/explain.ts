@@ -114,7 +114,7 @@ async function generateExplanationsForSection(
 
   const completion = await client.chat.completions.create({
     model,
-    max_completion_tokens: 8192,
+    max_completion_tokens: 4096,
     messages: [
       { role: "system", content: systemPrompt },
       {

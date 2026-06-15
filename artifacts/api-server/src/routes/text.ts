@@ -54,7 +54,7 @@ router.post("/text/organize", async (req, res) => {
     }
 
     const paragraphPreviews = paragraphs
-      .map((p, i) => `[${i}]: ${p.slice(0, 150)}${p.length > 150 ? "..." : ""}`)
+      .map((p, i) => `[${i}]: ${p.slice(0, 80)}${p.length > 80 ? "…" : ""}`)
       .join("\n");
 
     const systemPrompt = `You are a text analysis assistant. You will be given a numbered list of paragraphs from a text.
@@ -78,7 +78,7 @@ Rules:
 
     const completion = await client.chat.completions.create({
       model,
-      max_completion_tokens: 8192,
+      max_completion_tokens: 400,
       messages: [
         { role: "system", content: systemPrompt },
         {

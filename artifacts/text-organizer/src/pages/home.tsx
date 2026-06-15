@@ -74,22 +74,72 @@ function parseMCQs(content: string): { mcqs: string[]; skipped: string[] } {
   return { mcqs, skipped };
 }
 
+// ── Explain cache ──────────────────────────────────────────────────────────────
+// Keyed by a simple djb2 hash of the MCQ content. Avoids re-calling the API
+// for content the model has already explained in this browser.
+const CACHE_KEY = "explain_cache_v1";
+const CACHE_MAX = 300; // max entries
+
+function djb2(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+
+function cacheGet(content: string): string | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)[djb2(content)] ?? null;
+  } catch { return null; }
+}
+
+function cacheSet(content: string, explanation: string) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    const map: Record<string, string> = raw ? JSON.parse(raw) : {};
+    map[djb2(content)] = explanation;
+    // Evict oldest entries if over limit
+    const keys = Object.keys(map);
+    if (keys.length > CACHE_MAX) {
+      keys.slice(0, keys.length - CACHE_MAX).forEach((k) => delete map[k]);
+    }
+    localStorage.setItem(CACHE_KEY, JSON.stringify(map));
+  } catch { /* storage full — ignore */ }
+}
+
 // ── API helper ────────────────────────────────────────────────────────────────
 async function fetchExplanations(
   sections: { title: string; content: string }[],
   apiHeaders?: Record<string, string>
 ): Promise<{ explanation: string }[]> {
-  const res = await fetch("/api/text/explain", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(apiHeaders ?? {}) },
-    body: JSON.stringify({ sections }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Request failed: ${res.status}`);
+  // Check cache for each section — only send uncached ones to the API
+  const results: Array<string | null> = sections.map((s) => cacheGet(s.content));
+  const uncachedIndices = results
+    .map((r, i) => (r === null ? i : -1))
+    .filter((i) => i !== -1);
+
+  if (uncachedIndices.length > 0) {
+    const res = await fetch("/api/text/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(apiHeaders ?? {}) },
+      body: JSON.stringify({ sections: uncachedIndices.map((i) => sections[i]) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(err.error || `Request failed: ${res.status}`);
+    }
+    const data = await res.json();
+    uncachedIndices.forEach((origIdx, bi) => {
+      const explanation = data.sections[bi]?.explanation;
+      if (explanation) {
+        results[origIdx] = explanation;
+        cacheSet(sections[origIdx].content, explanation);
+      }
+    });
   }
-  const data = await res.json();
-  return data.sections;
+
+  return results.map((r, i) => ({ explanation: r ?? sections[i].content }));
 }
 
 // ── Explained content renderer ────────────────────────────────────────────────
