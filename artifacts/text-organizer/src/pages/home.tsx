@@ -396,7 +396,12 @@ export default function Home() {
     const out = sectionStates
       .map((s) => {
         const body = s.mcqs
-          .map((m) => m.explanation ?? m.content)
+          .map((m) => {
+            if (m.explanation) {
+              return `${m.content}\n${m.explanation}`;
+            }
+            return m.content;
+          })
           .join("\n\n");
         return `${s.section.title}\n\n${body}`;
       })
