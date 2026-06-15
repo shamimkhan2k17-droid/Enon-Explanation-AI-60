@@ -964,18 +964,28 @@ export default function Home() {
                                     className="w-full min-h-[160px] p-3 text-sm leading-relaxed bg-white border border-violet-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-300 resize-y font-mono text-foreground"
                                     autoFocus
                                   />
-                                ) : isLoading ? (
-                                  <div className="space-y-2 mt-2">
-                                    <div className="h-4 bg-blue-100 rounded-md w-full animate-pulse" />
-                                    <div className="h-4 bg-blue-100 rounded-md w-5/6 animate-pulse" />
-                                    <div className="h-4 bg-amber-50 rounded-md w-full animate-pulse mt-3" />
-                                    <div className="h-4 bg-amber-50 rounded-md w-3/4 animate-pulse" />
-                                  </div>
-                                ) : isDone ? (
-                                  <ExplainedContent text={mcq.explanation!} />
                                 ) : (
-                                  <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                                    {mcq.content}
+                                  <div className="space-y-0">
+                                    {/* MCQ — always visible */}
+                                    <div className={`text-sm leading-relaxed whitespace-pre-wrap ${isLoading ? "text-muted-foreground" : "text-foreground"}`}>
+                                      {mcq.content}
+                                    </div>
+
+                                    {/* Loading shimmer for explanation */}
+                                    {isLoading && (
+                                      <div className="space-y-2 mt-3 pt-3 border-t border-amber-200">
+                                        <div className="h-4 bg-amber-100 rounded-md w-full animate-pulse" />
+                                        <div className="h-4 bg-amber-100 rounded-md w-5/6 animate-pulse" />
+                                        <div className="h-4 bg-amber-100 rounded-md w-4/5 animate-pulse" />
+                                      </div>
+                                    )}
+
+                                    {/* Explanation — only when done */}
+                                    {isDone && mcq.explanation && (
+                                      <div className="mt-3 pt-3 border-t border-amber-200">
+                                        <ExplainedContent text={mcq.explanation} />
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
